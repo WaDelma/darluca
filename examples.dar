@@ -1,0 +1,46 @@
+std := load darluca
+
+main := (){
+    name := "world"
+    std.in -> name
+    std.out <- "Hello, {}!" name.slice([0..1[) \\ name.slice([1..])
+
+    std.out <- "4 + 2 = {}" add(4 2)
+    add_f := add
+    std.out <- "4 + 2 = {}" add_f(4 2)
+    param := (4 2)
+    std.out <- "4 + 2 = {}" std.do(add param)
+
+    std.out <- "Sum of numbers from 1 to 10: {}" [1..10].fold(0 (a b){a + b})
+    uniq x := 0
+    std.for([1..10[ (i){x <- +(x i)})
+    std.out <- "Sum of numbers from 1 to 10: {}" x
+
+    90_degrees := complex(*(0.25 std.math.tau) _)
+    std.assert(**(std.math.e *(90_degrees)))
+}
+
+add := (a b){
+    +(a b)
+}
+
+complex := (r=0. i=0.){
+    pub i := (){
+        complex(_ 1.)
+    }
+
+    v is +
+    pub add := (lhs){
+        complex(+(r lhs.r) +(i lhs.i))
+    }
+}
+
+v is *
+complex.mul := (lhs){
+    complex(
+        -(*(r lhs.r) *(i lhs.i))
+        +(*(i lhs.r) *(r lhs.i))
+    )
+}
+
+//TODO: Complex exponentation?
