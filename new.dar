@@ -1,0 +1,55 @@
+initial = ()
+terminal = ||
+
+Functor(f) {
+  fmap(ff): (a -> b) -> (f(a) -> f(b))
+}
+
+Monad(m): Functor(m) {
+  return(a): a -> m(a)
+  flatten(mma): m(m(a)) -> m(a)
+
+  flat_map(ma f): (m(a) -> (a -> m(b))) -> m(b)
+    = flatten(fmap(f ma))
+  compose(f g): ((a -> m(b)) -> (b -> m(c))) -> (a -> m(c))
+    = (a) := flat_map(f(a) g)
+}
+
+Either(a b) = |This(a) That(b)|
+
+Maybe(a) = |Some(a) None|
+Functor(Maybe) {
+  fmap(ff) =
+    | None = None
+    | Some(a) = Some(ff(a))
+}
+Monad(Maybe) {
+  return(a) = Some(a)
+  flatten(mma) =
+    | Some(Some(a)) = Some(a)
+    | _ = None
+}
+
+rip: Either(a b) -> (Maybe(a) Maybe(b)) =
+  | This(a) = (Some(a) None)
+  | That(b) = (None Some(b))
+
+shared_lifetime: ((&a &b) (&a -> &c)) -> &a´c =
+  | ((a _) f) = f(a)
+
+unique_lifetime: ((¤a ¤b) (¤b -> ¤c)) -> ¤b´c =
+  | ((_ b) f) = f(b)
+
+a´ <: b´
+complex_lifetime: ((&a &b) (&l`b -> &l`a)) -> &b´a =
+  | ((_ b) f) = f(b) 
+
+
+//TODO: Better way to define these:
+//i8 = -2**7 =.. 2**7
+//
+//u16 = 0 =.. 2**16
+//i16 = -2**15 =.. 2**15
+//
+//u32 = 0 =.. 2**32
+//i32 = -2**31 =.. 2**31

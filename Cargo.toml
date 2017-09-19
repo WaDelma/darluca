@@ -1,6 +1,7 @@
 [package]
+authors = ["Wadelma <delma@del.ma>"]
 name = "darluca"
 version = "0.1.0"
-authors = ["Wadelma <delma@del.ma>"]
 
 [dependencies]
+nom = {version = "3.2.0"}
