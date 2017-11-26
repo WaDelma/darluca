@@ -202,8 +202,25 @@ named!(union(Tks) -> Expression,
     )
 );
 
+named!(scope(Tks) -> Expression,
+    map!(
+        do_parse!(
+            tag_token!(Curly(Open)) >>
+            expressions: many0!(expression) >>
+            tag_token!(Curly(Close)) >>
+            (expressions)
+        ),
+        |expressions| {
+            Expression::Scope {
+                expressions
+            }
+        }
+    )
+);
+
 named!(expression(Tks) -> Expression,
     alt_complete!(
+        scope |
         tuple |
         union |
         operation |

@@ -9,12 +9,59 @@ use parser::ast::Literal::*;
 use parser::ast::Operation::*;
 use interner::{Interner, Symbol};
 
+use self::Value::*;
+
 #[cfg(test)]
 mod test;
 
-pub fn interpret(ast: Ast, interner: &Interner, memory: &mut HashMap<ast::Identifier, Value>) {
-    for e in &ast.expressions {
-        execute(e, memory, interner);
+struct Memory {
+    scopes: Vec<HashMap<ast::Identifier, Value>>,
+    #[cfg(test)]
+    used_scopes: Vec<HashMap<ast::Identifier, Value>>,
+}
+
+impl Memory {
+    fn new() -> Self {
+        Memory {
+            scopes: vec![],
+            #[cfg(test)]
+            used_scopes: vec![],
+        }
+    }
+
+    fn get(&self, i: &ast::Identifier) -> Option<&Value> {
+        for scope in self.scopes.iter().rev() {
+            if let r @ Some(_) = scope.get(i) {
+                return r;
+            }
+        }
+        None
+    }
+
+    fn get_mut(&mut self, i: &ast::Identifier) -> Option<&mut Value> {
+        for scope in self.scopes.iter_mut().rev() {
+            if let r @ Some(_) = scope.get_mut(i) {
+                return r;
+            }
+        }
+        None
+    }
+
+    fn insert(&mut self, i: ast::Identifier, v: Value) -> Option<Value> {
+        self.scopes.last_mut().and_then(|l| l.insert(i, v))
+    }
+
+    fn scope<F, T>(&mut self, f: F) -> T
+        where F: FnOnce(&mut Self) -> T
+    {
+        self.scopes.push(HashMap::new());
+        let result = f(self);
+        let used_scope = self.scopes.pop();
+        #[cfg(test)]
+        self.used_scopes.push(
+            used_scope.expect("We pushed scope so this should be always valid.")
+        );
+        result
     }
 }
 
@@ -27,8 +74,23 @@ pub enum Value {
     Uni(usize, Box<Value>, usize)
 }
 
-fn execute(e: &Expression, memory: &mut HashMap<ast::Identifier, Value>, interner: &Interner) -> Value {
-    use self::Value::*;
+
+pub fn interpret(ast: Ast, interner: &Interner) -> Value {
+    let mut memory = Memory::new();
+    interpret_scope(&ast.expressions, &mut memory, interner)
+}
+
+fn interpret_scope(expressions: &[Expression], memory: &mut Memory, interner: &Interner) -> Value {
+    memory.scope(|memory| {
+        let mut value = Tup(vec![]);
+        for e in expressions {
+            value = execute(e, memory, interner);
+        }
+        value
+    })
+}
+
+fn execute(e: &Expression, memory: &mut Memory, interner: &Interner) -> Value {
     match *e {
         Literal(ref l) => match *l {
             Integer(ref n) => {
@@ -50,13 +112,16 @@ fn execute(e: &Expression, memory: &mut HashMap<ast::Identifier, Value>, interne
             } else {
                 Uni(0, Box::new(Invalid), 0)
             }
-        }
+        },
+        Scope { ref expressions } => {
+            interpret_scope(expressions, memory, interner)
+        },
         Operation(ref o) => match *o {
             Assignment {
                 ref identifier,
                 ref value
             } => {
-                // TODO: Shadowing/Scoping
+                // TODO: Shadowing
                 let value = execute(value, memory, interner);
                 memory.insert(*identifier, value);
                 Tup(vec![])

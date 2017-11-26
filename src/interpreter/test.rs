@@ -6,30 +6,40 @@ use super::Value::*;
 macro_rules! assert_parse {
     ($interner:ident {
         $($code:tt)*
-    }{
+    }$({
         $($var:ident => $val:expr),* $(,)*
-    }) => {
+    })*) => {
         {
+            #![allow(unused)]
+            use interpreter::Memory;
             use parser::ast::Identifier;
             use symtern::prelude::*;
-            
             use std::collections::HashMap;
+
             let tokens = {
                 ::lexer::Lexer::new(&mut $interner).tokenize(
                     stringify!($($code)*).as_bytes()
                 ).1.unwrap().1
             };
             let ast = ::parser::parse(tokens.borrow()).unwrap().1;
-            let mut memory = HashMap::new();
-            ::interpreter::interpret(ast, &$interner, &mut memory);
-            let mut expected = HashMap::new();
+            let mut memory = Memory::new();
+            ::interpreter::interpret_scope(&ast.expressions, &mut memory, &$interner);
+            let mut n = 1;
             $(
-                let interned = $interner.intern(stringify!($var)).unwrap();
-                expected.insert(Identifier(interned), $val);
+                let mut expected = HashMap::new();
+                $(
+                    let interned = $interner.intern(stringify!($var)).unwrap();
+                    expected.insert(Identifier(interned), $val);
+                )*
+                let scope = &memory.used_scopes[memory.used_scopes.len() - n];
+                if scope != &expected {
+                    panic!(
+                        "Expected:\n{:#?}\nInterpreted:\n{:#?}",
+                        expected,
+                        scope);
+                }
+                n += 1;
             )*
-            if memory != expected {
-                panic!("Expected:\n{:#?}\nInterpreted:\n{:#?}", expected, memory);
-            }
         }
     };
     ($($tks:tt)*) => {
@@ -151,5 +161,19 @@ fn interpret_union_union() {
                     Nat(2)
                 ), 2)
             ), 3)
+    });
+}
+
+#[test]
+fn interpret_scope() {
+    assert_parse!({
+        y = {
+            x = 1
+            2
+        }
+    }{
+        y => Nat(2)
+    }{
+        x => Nat(1)
     });
 }

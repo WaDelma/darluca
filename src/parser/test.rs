@@ -58,6 +58,27 @@ fn parse_assignment() {
 }
 
 #[test]
+fn parse_scope() {
+    let mut interner = Interner::new();
+    let x = interner.intern("x").unwrap();
+    let one = interner.intern("1").unwrap();
+    assert_parse!(interner {
+        {
+            x = 1
+        }
+    }{
+        Scope {
+            expressions: vec![
+                Operation(Assignment {
+                    identifier: Identifier(x),
+                    value: Box::new(Literal(Integer(one)))
+                })
+            ]
+        }
+    });
+}
+
+#[test]
 fn parse_tuple() {
     let mut interner = Interner::new();
     let one = interner.intern("1").unwrap();
