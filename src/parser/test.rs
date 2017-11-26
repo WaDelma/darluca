@@ -1,3 +1,7 @@
+use symtern::prelude::*;
+
+use interner::Interner;
+
 use super::parse;
 use super::ast::{self, Ast, Expression, Identifier, Literal, Operation};
 use super::ast::Expression::*;
@@ -5,16 +9,16 @@ use super::ast::Literal::*;
 use super::ast::Operation::*;
 
 macro_rules! assert_parse {
-    ({
+    ($interner:ident {
         $($code:tt)*
     }{
         $($exprs:expr)*
     }) => {
         {
-            let tokens = ::lexer::tokenize(
+            let tokens = ::lexer::Lexer::new(&mut $interner).tokenize(
                     stringify!($($code)*).as_bytes()
-                ).unwrap().1;
-            let parsed = parse(tokens.borrow());
+                ).1.unwrap().1;
+            let parsed = /*::parser::Parser::new(&mut interner).*/parse(tokens.borrow());
             let expected = ::nom::IResult::Done(
                     ::lexer::tokens::Tks {
                         tokens: &[][..],
@@ -29,30 +33,59 @@ macro_rules! assert_parse {
                 panic!("Expected:\n{:#?}\nParsed:\n{:#?}", expected, parsed);
             }
         }
-    }
+    };
+    ($($tks:tt)*) => {
+        {
+            let mut interner = Interner::new();
+            assert_parse!(interner $($tks)*);
+        }
+    };
 }
 
 #[test]
 fn parse_assignment() {
-    assert_parse!({
+    let mut interner = Interner::new();
+    let x = interner.intern("x").unwrap();
+    let one = interner.intern("1").unwrap();
+    assert_parse!(interner {
         x = 1
     }{
         Operation(Assignment {
-            identifier: "x".into(),
-            value: Box::new(Literal(Integer("1")))
+            identifier: Identifier(x),
+            value: Box::new(Literal(Integer(one)))
         })
     });
 }
 
 #[test]
 fn parse_tuple() {
-    assert_parse!({
-        (1 2)
+    let mut interner = Interner::new();
+    let one = interner.intern("1").unwrap();
+    let two = interner.intern("2").unwrap();
+    assert_parse!(interner {
+        (1, 2)
     }{
         Tuple {
             value: vec![
-                Literal(Integer("1")),
-                Literal(Integer("2")),
+                Literal(Integer(one)),
+                Literal(Integer(two)),
+            ]
+        }
+    });
+}
+
+#[test]
+fn parse_tuple_with_trailing_colon() {
+    let mut interner = Interner::new();
+    let one = interner.intern("1").unwrap();
+    let two = interner.intern("2").unwrap();
+    assert_parse!(interner {
+        (1, 2,)
+    }{
+        Tuple {
+            value: vec![
+                Literal(Integer(one)),
+                Literal(Integer(two)),
             ]
         }
     });
@@ -68,14 +101,41 @@ fn parse_initial() {
         }
     });
 }
+#[test]
+fn parse_initial_trailing_colon() {
+    assert_parse!({
+        (,)
+    }{
+        Tuple {
+            value: vec![]
+        }
+    });
+}
 
 #[test]
 fn tokenize_union() {
-    assert_parse!({
-        |1 _|
+    let mut interner = Interner::new();
+    let one = interner.intern("1").unwrap();
+    assert_parse!(interner {
+        |1, _|
     }{
         Union(Some(ast::Union {
-            value: Box::new(Literal(Integer("1"))),
+            value: Box::new(Literal(Integer(one))),
+            position: 0,
+            size: 2,
+        }))
+    });
+}
+
+#[test]
+fn tokenize_union_trailing_colon() {
+    let mut interner = Interner::new();
+    let one = interner.intern("1").unwrap();
+    assert_parse!(interner {
+        |1, _,|
+    }{
+        Union(Some(ast::Union {
+            value: Box::new(Literal(Integer(one))),
             position: 0,
             size: 2,
         }))
@@ -92,12 +152,24 @@ fn parse_terminal() {
 }
 
 #[test]
-fn parse_addition() {
+fn parse_terminal_trailing_colon() {
     assert_parse!({
-        +(1 2)
+        |,|
+    }{
+        Union(None)
+    });
+}
+
+#[test]
+fn parse_addition() {
+    let mut interner = Interner::new();
+    let one = interner.intern("1").unwrap();
+    let two = interner.intern("2").unwrap();
+    assert_parse!(interner {
+        (1 + 2)
     }{
         Operation(Addition {
-            parameters: vec![Literal(Integer("1")), Literal(Integer("2"))],
+            parameters: vec![Literal(Integer(one)), Literal(Integer(two))],
         })
     })
 }

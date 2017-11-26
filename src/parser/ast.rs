@@ -1,54 +1,50 @@
+use interner::Symbol;
+
 #[derive(Debug, PartialEq, Eq)]
-pub struct Ast<'ctx> {
-    pub expressions: Vec<Expression<'ctx>>,
+pub struct Ast {
+    pub expressions: Vec<Expression>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum Expression<'ctx> {
-    Literal(Literal<'ctx>),
-    Identifier(Identifier<'ctx>),
-    Operation(Operation<'ctx>),
+pub enum Expression {
+    Literal(Literal),
+    Identifier(Identifier),
+    Operation(Operation),
     FunctionCall {
-        name: Identifier<'ctx>,
-        parameters: Vec<Expression<'ctx>>,
+        name: Identifier,
+        parameters: Vec<Expression>,
     },
     Tuple {
-        value: Vec<Expression<'ctx>>,
+        value: Vec<Expression>,
     },
-    Union(Option<Union<'ctx>>),
+    Union(Option<Union>),
     Scope {
-        expressions: Vec<Expression<'ctx>>,
+        expressions: Vec<Expression>,
     },
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum Operation<'ctx> {
+pub enum Operation {
     Assignment {
-        identifier: Identifier<'ctx>,
-        value: Box<Expression<'ctx>>,
+        identifier: Identifier,
+        value: Box<Expression>,
     },
     Addition {
-        parameters: Vec<Expression<'ctx>>,
+        parameters: Vec<Expression>,
     }
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct Union<'ctx> {
-    pub value: Box<Expression<'ctx>>,
+pub struct Union {
+    pub value: Box<Expression>,
     pub position: usize,
     pub size: usize,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct Identifier<'ctx>(pub &'ctx str);
-
-impl<'ctx> From<&'ctx str> for Identifier<'ctx> {
-    fn from(f: &'ctx str) -> Self {
-        Identifier(f)
-    }
-}
+pub struct Identifier(pub Symbol);
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum Literal<'ctx> {
-    Integer(&'ctx str)
+pub enum Literal {
+    Integer(Symbol)
 }

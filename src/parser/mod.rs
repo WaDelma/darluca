@@ -88,17 +88,16 @@ named!(assignment(Tks) -> Operation,
 named!(addition(Tks) -> Operation,
     map!(
         do_parse!(
+            tag_token!(Parenthesis(Open)) >>
+            first: expression >>
             tag_token!(Addition) >>
-            parameters: tuple >>
-            (parameters)
+            second: expression >>
+            tag_token!(Parenthesis(Close)) >>
+            (first, second)
         ),
-        |parameters| {
-            if let Expression::Tuple { value } = parameters {
-                Operation::Addition {
-                    parameters: value,
-                }
-            } else {
-                panic!("Parsed tuple wasn't tuple.");
+        |(first, second)| {
+            Operation::Addition {
+                parameters: vec![first, second],
             }
         }
     )
@@ -121,7 +120,11 @@ named!(tuple(Tks) -> Expression,
     map!(
         do_parse!(
             tag_token!(Parenthesis(Open)) >>
-            expressions: many0!(expression) >>
+            expressions: separated_list!(
+                tag_token!(Colon),
+                expression
+            ) >>
+            opt!(tag_token!(Colon)) >>
             tag_token!(Parenthesis(Close)) >>
             (expressions)
         ),
@@ -137,23 +140,43 @@ named!(union(Tks) -> Expression,
     alt!(
         do_parse!(
             tag_token!(Bar) >>
+            opt!(tag_token!(Colon)) >>
             tag_token!(Bar) >>
             (Expression::Union(None))
         ) |
         map!(
             do_parse!(
                 tag_token!(Bar) >>
-                before: many0!(tag_token!(Placeholder)) >>
+                before: opt!(
+                    terminated!(
+                        separated_list!(
+                            tag_token!(Colon),
+                            tag_token!(Placeholder)
+                        ),
+                        tag_token!(Colon)
+                    )
+                ) >>
                 value: expression >>
-                after: many0!(tag_token!(Placeholder)) >>
+                after: opt!(
+                    preceded!(
+                        tag_token!(Colon),
+                        separated_list!(
+                            tag_token!(Colon),
+                            tag_token!(Placeholder)
+                        )
+                    )
+                ) >>
+                opt!(tag_token!(Colon)) >>
                 tag_token!(Bar) >>
                 (before, value, after)
             ),
             |(before, value, after)| {
+                let before = before.map(|b| b.len()).unwrap_or(0);
+                let after = after.map(|b| b.len()).unwrap_or(0);
                 Expression::Union(Some(Union {
                     value: Box::new(value),
-                    position: before.len(),
-                    size: before.len() + after.len() + 1
+                    position: before,
+                    size: before + after + 1
                 }))
             }
         )

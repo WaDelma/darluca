@@ -5,3 +5,4 @@ version = "0.1.0"
 
 [dependencies]
 nom = {version = "3.2.0"}
+symtern = "0.1.0"
