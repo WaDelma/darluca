@@ -117,7 +117,7 @@ fn tokenize_union() {
     let mut interner = Interner::new();
     let one = interner.intern("1").unwrap();
     assert_parse!(interner {
-        |1, _|
+        (1|_)
     }{
         Union(Some(ast::Union {
             value: Box::new(Literal(Integer(one))),
@@ -128,11 +128,11 @@ fn tokenize_union() {
 }
 
 #[test]
-fn tokenize_union_trailing_colon() {
+fn tokenize_union_trailing_bar() {
     let mut interner = Interner::new();
     let one = interner.intern("1").unwrap();
     assert_parse!(interner {
-        |1, _,|
+        (1|_|)
     }{
         Union(Some(ast::Union {
             value: Box::new(Literal(Integer(one))),
@@ -145,16 +145,7 @@ fn tokenize_union_trailing_colon() {
 #[test]
 fn parse_terminal() {
     assert_parse!({
-        ||
-    }{
-        Union(None)
-    });
-}
-
-#[test]
-fn parse_terminal_trailing_colon() {
-    assert_parse!({
-        |,|
+        (|)
     }{
         Union(None)
     });

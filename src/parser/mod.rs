@@ -139,35 +139,35 @@ named!(tuple(Tks) -> Expression,
 named!(union(Tks) -> Expression,
     alt!(
         do_parse!(
+            tag_token!(Parenthesis(Open)) >>
             tag_token!(Bar) >>
-            opt!(tag_token!(Colon)) >>
-            tag_token!(Bar) >>
+            tag_token!(Parenthesis(Close)) >>
             (Expression::Union(None))
         ) |
         map!(
             do_parse!(
-                tag_token!(Bar) >>
+                tag_token!(Parenthesis(Open)) >>
                 before: opt!(
                     terminated!(
                         separated_list!(
-                            tag_token!(Colon),
+                            tag_token!(Bar),
                             tag_token!(Placeholder)
                         ),
-                        tag_token!(Colon)
+                        tag_token!(Bar)
                     )
                 ) >>
                 value: expression >>
                 after: opt!(
                     preceded!(
-                        tag_token!(Colon),
+                        tag_token!(Bar),
                         separated_list!(
-                            tag_token!(Colon),
+                            tag_token!(Bar),
                             tag_token!(Placeholder)
                         )
                     )
                 ) >>
-                opt!(tag_token!(Colon)) >>
-                tag_token!(Bar) >>
+                opt!(tag_token!(Bar)) >>
+                tag_token!(Parenthesis(Close)) >>
                 (before, value, after)
             ),
             |(before, value, after)| {

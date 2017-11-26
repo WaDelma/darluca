@@ -83,23 +83,24 @@ fn tokenize_union() {
     let mut interner = Interner::new();
     let one = interner.intern("1").unwrap();
     assert_tokens!(interner {
-        |1, _|
+        (1|_)
     }{
-        Punctuation(Bar)
+        Punctuation(Parenthesis(Open))
         Literal(Integer(one))
-        Punctuation(Colon)
-        Punctuation(Placeholder)
         Punctuation(Bar)
+        Punctuation(Placeholder)
+        Punctuation(Parenthesis(Close))
     });
 }
 
 #[test]
 fn tokenize_terminal() {
     assert_tokens!({
-        ||
+        (|)
     }{
+        Punctuation(Parenthesis(Open))
         Punctuation(Bar)
-        Punctuation(Bar)
+        Punctuation(Parenthesis(Close))
     });
 }
 

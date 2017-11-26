@@ -81,6 +81,7 @@ fn interpret_move() {
     });
 }
 
+#[test]
 fn interpret_assign_assign() {
     assert_parse!({
         x = y = 1
@@ -113,5 +114,27 @@ fn interpret_tuple_tuple() {
                     Nat(2)
                 ])
             ])
+    });
+}
+
+#[test]
+fn interpret_union() {
+    assert_parse!({
+        x = (1|_|_)
+    }{
+        x => Uni(0, Box::new(Nat(1)), 3)
+    });
+}
+
+#[test]
+fn interpret_union_union() {
+    assert_parse!({
+        x = ((_|2)|_|_)
+    }{
+        x => Uni(0,Box::new(
+                Uni(1, Box::new(
+                    Nat(2)
+                ), 2)
+            ), 3)
     });
 }

@@ -23,6 +23,7 @@ pub enum Value {
     Initial,
     Tup(Vec<Value>),
     Nat(usize),
+    Uni(usize, Box<Value>, usize)
 }
 
 fn execute(e: &Expression, memory: &mut HashMap<ast::Identifier, Value>, interner: &Interner) -> Value {
@@ -37,6 +38,14 @@ fn execute(e: &Expression, memory: &mut HashMap<ast::Identifier, Value>, interne
                 .map(|e| execute(e, memory, interner))
                 .collect() 
             )
+        },
+        Union(ref u) => {
+            if let Some(ref u) = *u {
+                let value = execute(&*u.value, memory, interner);
+                Uni(u.position, Box::new(value), u.size)
+            } else {
+                Uni(0, Box::new(Invalid), 0)
+            }
         }
         Operation(ref o) => match *o {
             Assignment {
