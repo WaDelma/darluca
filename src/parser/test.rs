@@ -18,7 +18,7 @@ macro_rules! assert_parse {
             let tokens = ::lexer::Lexer::new(&mut $interner).tokenize(
                     stringify!($($code)*).as_bytes()
                 ).1.unwrap().1;
-            let parsed = /*::parser::Parser::new(&mut interner).*/parse(tokens.borrow());
+            let parsed = ::parser::parse(tokens.borrow());
             let expected = ::nom::IResult::Done(
                     ::lexer::tokens::Tks {
                         tokens: &[][..],

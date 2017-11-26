@@ -1,4 +1,4 @@
-use interner::Symbol;
+use interner::{Interner, Symbol};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Ast {
@@ -41,7 +41,7 @@ pub struct Union {
     pub size: usize,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct Identifier(pub Symbol);
 
 #[derive(Debug, PartialEq, Eq)]
