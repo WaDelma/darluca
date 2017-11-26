@@ -103,11 +103,30 @@ named!(addition(Tks) -> Operation,
     )
 );
 
+named!(indexing(Tks) -> Operation,
+    map!(
+        do_parse!(
+            target: identifier!() >>
+            tag_token!(Square(Open)) >>
+            index: expression >>
+            tag_token!(Square(Close)) >>
+            (target, Box::new(index))
+        ),
+        |(target, index)| {
+            Operation::Indexing {
+                target,
+                index,
+            }
+        }
+    )
+);
+
 named!(operation(Tks) -> Expression,
     map!(
         alt_complete!(
             assignment |
-            addition
+            addition |
+            indexing
         ),
         |operation| {
             Expression::Operation(operation)

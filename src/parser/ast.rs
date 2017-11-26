@@ -31,6 +31,10 @@ pub enum Operation {
     },
     Addition {
         parameters: Vec<Expression>,
+    },
+    Indexing {
+        target: Identifier,
+        index: Box<Expression>,
     }
 }
 

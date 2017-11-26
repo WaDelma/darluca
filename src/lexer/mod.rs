@@ -77,6 +77,10 @@ impl<'ctx> Lexer<'ctx> {
         alt!(
             tag!("{") => {|_| Curly(Open)} |
             tag!("}") => {|_| Curly(Close)} |
+            tag!("[") => {|_| Square(Open)} |
+            tag!("]") => {|_| Square(Close)} |
+            tag!("<") => {|_| Angle(Open)} |
+            tag!(">") => {|_| Angle(Close)} |
             tag!("(") => {|_| Parenthesis(Open)} |
             tag!(")") => {|_| Parenthesis(Close)} |
             tag!(";") => {|_| SemiColon} |

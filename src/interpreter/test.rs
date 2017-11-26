@@ -118,6 +118,21 @@ fn interpret_tuple_tuple() {
 }
 
 #[test]
+fn interpret_tuple_indexing() {
+    assert_parse!({
+        x = (1, 2, 3)
+        y = x[1]
+    }{
+        x => Tup(vec![
+                Nat(1),
+                Invalid,
+                Nat(3)
+            ]),
+        y => Nat(2),
+    });
+}
+
+#[test]
 fn interpret_union() {
     assert_parse!({
         x = (1|_|_)

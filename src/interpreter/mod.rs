@@ -1,6 +1,7 @@
 use symtern::prelude::*;
 
 use std::collections::HashMap;
+use std::mem::replace;
 
 use parser::ast::{self, Ast, Expression};
 use parser::ast::Expression::*;
@@ -30,9 +31,12 @@ fn execute(e: &Expression, memory: &mut HashMap<ast::Identifier, Value>, interne
     use self::Value::*;
     match *e {
         Literal(ref l) => match *l {
-            Integer(ref n) => Nat(str::parse(interner.resolve(*n).unwrap()).unwrap())
+            Integer(ref n) => {
+                let n = interner.resolve(*n).expect("No such literal");
+                Nat(str::parse(n).expect("Literal couldn't be parsed to integer"))
+            }
         },
-        Identifier(ref i) => memory.insert(*i, Invalid).unwrap(),
+        Identifier(ref i) => memory.insert(*i, Invalid).expect("No such variable"),
         Tuple { ref value } => {
             Tup(value.iter()
                 .map(|e| execute(e, memory, interner))
@@ -52,7 +56,7 @@ fn execute(e: &Expression, memory: &mut HashMap<ast::Identifier, Value>, interne
                 ref identifier,
                 ref value
             } => {
-                // TODO: Shadowing
+                // TODO: Shadowing/Scoping
                 let value = execute(value, memory, interner);
                 memory.insert(*identifier, value);
                 Tup(vec![])
@@ -68,6 +72,24 @@ fn execute(e: &Expression, memory: &mut HashMap<ast::Identifier, Value>, interne
                             panic!("Cannot add");
                         }
                     }))
+            },
+            Indexing {
+                ref target,
+                ref index,
+            } => {
+                let index = execute(index, memory, interner);
+                match *memory.get_mut(target).unwrap() {
+                    Tup(ref mut value) => {
+                        let index = match index {
+                            Nat(n) => n,
+                            _ => panic!("Cannot index with non-integer."),
+                        };
+                        let value = value.get_mut(index)
+                            .expect("Out of bounds access");
+                        replace(value, Invalid)
+                    }
+                    _ => panic!("Cannot index"),
+                }
             }
         },
         _ => unimplemented!(),

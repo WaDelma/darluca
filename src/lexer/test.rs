@@ -79,6 +79,26 @@ fn tokenize_initial() {
 }
 
 #[test]
+fn tokenize_index_tuple() {
+    let mut interner = Interner::new();
+    let zero = interner.intern("0").unwrap();
+    let one = interner.intern("1").unwrap();
+    let two = interner.intern("2").unwrap();
+    assert_tokens!(interner {
+        (1, 2)[0]
+    }{
+        Punctuation(Parenthesis(Open))
+        Literal(Integer(one))
+        Punctuation(Colon)
+        Literal(Integer(two))
+        Punctuation(Parenthesis(Close))
+        Punctuation(Square(Open))
+        Literal(Integer(zero))
+        Punctuation(Square(Close))
+    });
+}
+
+#[test]
 fn tokenize_union() {
     let mut interner = Interner::new();
     let one = interner.intern("1").unwrap();

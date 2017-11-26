@@ -35,6 +35,8 @@ pub enum Literal {
 pub enum Punctuation {
     Curly(Balanced),
     Parenthesis(Balanced),
+    Square(Balanced),
+    Angle(Balanced),
     Placeholder,
     SemiColon,
     Colon,
