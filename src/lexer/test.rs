@@ -157,3 +157,20 @@ fn tokenize_false() {
         Reserved(False)
     });
 }
+
+#[test]
+fn tokenize_if_else() {
+    assert_tokens!({
+        if true {
+        } else {
+        }
+    }{
+        Reserved(If)
+        Reserved(True)
+        Punctuation(Curly(Open))
+        Punctuation(Curly(Close))
+        Reserved(Else)
+        Punctuation(Curly(Open))
+        Punctuation(Curly(Close))
+    });
+}

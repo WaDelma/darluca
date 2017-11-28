@@ -15,7 +15,7 @@ use self::tokens::Literal::*;
 
 pub mod tokens;
 #[cfg(test)]
-pub mod test;
+mod test;
 
 // TODO: Full UTF-8 support
 // fn is_valid_for_ident(c: char) -> bool {
@@ -64,7 +64,9 @@ impl<'ctx> Lexer<'ctx> {
         alt!(
             tag!("let") => {|_| Let} |
             tag!("true") => {|_| True} |
-            tag!("false") => {|_| False}
+            tag!("false") => {|_| False} |
+            tag!("if") => {|_| If} |
+            tag!("else") => {|_| Else}
         )
     );
 

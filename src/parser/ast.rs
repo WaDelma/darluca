@@ -14,6 +14,11 @@ pub enum Expression {
         name: Identifier,
         parameters: Vec<Expression>,
     },
+    If {
+        condition: Box<Expression>,
+        expressions: Vec<Expression>,
+        elses: Vec<Expression>,
+    },
     Tuple {
         value: Vec<Expression>,
     },

@@ -120,6 +120,17 @@ fn execute(e: &Expression, memory: &mut Memory, interner: &Interner) -> Value {
         Scope { ref expressions } => {
             interpret_scope(expressions, memory, interner)
         },
+        If { ref condition, ref expressions, ref elses } => {
+            let condition = match execute(condition, memory, interner) {
+                Bool(b) => b,
+                _ => panic!("Invalid condition."),
+            };
+            interpret_scope(if condition {
+                expressions
+            } else {
+                elses
+            }, memory, interner)
+        },
         Operation(ref o) => match *o {
             Assignment {
                 ref identifier,

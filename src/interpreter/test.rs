@@ -7,7 +7,7 @@ macro_rules! assert_parse {
     ($interner:ident {
         $($code:tt)*
     }$({
-        $($var:ident => $val:expr),* $(,)*
+        $($var:ident => $val:expr)*
     })*) => {
         {
             #![allow(unused)]
@@ -60,6 +60,17 @@ fn interpret_add_and_assign() {
 }
 
 #[test]
+fn interpret_add_from_variable() {
+    assert_parse!({
+        y = 2
+        x = (3 + y)
+    }{
+        y => Invalid
+        x => Nat(5)
+    });
+}
+
+#[test]
 fn interpret_reassign() {
     assert_parse!({
         x = 1
@@ -75,7 +86,7 @@ fn interpret_multiple_assigns() {
         x = 1
         y = 2
     }{
-        x => Nat(1),
+        x => Nat(1)
         y => Nat(2)
     });
 }
@@ -86,7 +97,7 @@ fn interpret_move() {
         x = 1
         y = x
     }{
-        x => Invalid,
+        x => Invalid
         y => Nat(1)
     });
 }
@@ -96,7 +107,7 @@ fn interpret_assign_assign() {
     assert_parse!({
         x = y = 1
     }{
-        x => Tup(vec![]),
+        x => Tup(vec![])
         y => Nat(1)
     });
 }
@@ -137,8 +148,8 @@ fn interpret_tuple_indexing() {
                 Nat(1),
                 Invalid,
                 Nat(3)
-            ]),
-        y => Nat(2),
+            ])
+        y => Nat(2)
     });
 }
 
@@ -184,7 +195,37 @@ fn interpret_boolean() {
         x = true
         y = false
     }{
-        x => Bool(true),
+        x => Bool(true)
         y => Bool(false)
+    });
+}
+
+#[test]
+fn interpret_if() {
+    assert_parse!({
+        if true {
+            x = 1
+        } else {
+            x = 2
+        }
+    }{
+
+    }{
+        x => Nat(1)
+    });
+}
+
+#[test]
+fn interpret_else() {
+    assert_parse!({
+        if false {
+            x = 1
+        } else {
+            x = 2
+        }
+    }{
+
+    }{
+        x => Nat(2)
     });
 }

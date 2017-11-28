@@ -70,8 +70,8 @@ macro_rules! literal_integer (
 
 named!(literal_boolean(Tks) -> Literal,
     alt_complete!(
-        tag_token!(Token::Reserved(True)) => {|_| Literal::Boolean(true)} |
-        tag_token!(Token::Reserved(False)) => {|_| Literal::Boolean(false)}
+        tag_token!(True) => {|_| Literal::Boolean(true)} |
+        tag_token!(False) => {|_| Literal::Boolean(false)}
     )
 );
 
@@ -237,9 +237,37 @@ named!(scope(Tks) -> Expression,
     )
 );
 
+named!(branch(Tks) -> Expression,
+    map!(
+        do_parse!(
+            tag_token!(If) >>
+            condition: expression >>
+            tag_token!(Curly(Open)) >>
+            expressions: many0!(expression) >>
+            tag_token!(Curly(Close)) >>
+            elses: opt!(do_parse!(
+                tag_token!(Else) >>
+                tag_token!(Curly(Open)) >>
+                elses: many0!(expression) >>
+                tag_token!(Curly(Close)) >>
+                (elses)
+            )) >>
+            (Box::new(condition), expressions, elses.unwrap_or(vec![]))
+        ),
+        |(condition, expressions, elses)| {
+            Expression::If {
+                condition,
+                expressions,
+                elses,
+            }
+        }
+    )
+);
+
 named!(expression(Tks) -> Expression,
     alt_complete!(
         scope |
+        branch |
         tuple |
         union |
         operation |

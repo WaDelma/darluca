@@ -26,6 +26,8 @@ pub enum Reserved {
     Let,
     True,
     False,
+    If,
+    Else,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

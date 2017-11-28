@@ -203,3 +203,20 @@ fn parse_false() {
         Literal(Boolean(false))
     });
 }
+
+#[test]
+fn parse_if_else() {
+    assert_parse!({
+        if true {
+            true
+        } else {
+            false
+        }
+    }{
+        If {
+            condition: Box::new(Literal(Boolean(true))),
+            expressions: vec![Literal(Boolean(true))],
+            elses: vec![Literal(Boolean(false))],
+        }
+    });
+}
