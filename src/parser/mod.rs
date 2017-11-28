@@ -92,13 +92,13 @@ named!(assignment(Tks) -> Operation,
         do_parse!(
             identifier: identifier!() >>
             tag_token!(Assignment) >>
-            expression: expression >>
-            (identifier, expression)
+            value: expression >>
+            (identifier, Box::new(value))
         ),
-        |(identifier, expression)| {
+        |(identifier, value)| {
             Operation::Assignment {
                 identifier,
-                value: Box::new(expression),
+                value,
             }
         }
     )
@@ -264,12 +264,34 @@ named!(branch(Tks) -> Expression,
     )
 );
 
+named!(declaration(Tks) -> Expression,
+    map!(
+        do_parse!(
+            tag_token!(Let) >>
+            identifier: identifier!() >>
+            value: opt!(complete!(do_parse!(
+                tag_token!(Assignment) >>
+                value: expression >>
+                (value)
+            ))) >>
+            (identifier, value.map(Box::new))
+        ),
+        |(identifier, value)| {
+            Expression::Declaration {
+                identifier,
+                value,
+            }
+        }
+    )
+);
+
 named!(expression(Tks) -> Expression,
     alt_complete!(
         scope |
         branch |
         tuple |
         union |
+        declaration |
         operation |
         literal |
         identifier!() => {Expression::Identifier}

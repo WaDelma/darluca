@@ -51,9 +51,9 @@ macro_rules! assert_parse {
 }
 
 #[test]
-fn interpret_add_and_assign() {
+fn interpret_add_and_declaration() {
     assert_parse!({
-        x = (1 + 2)
+        let x = (1 + 2)
     }{
         x => Nat(3)
     });
@@ -62,8 +62,8 @@ fn interpret_add_and_assign() {
 #[test]
 fn interpret_add_from_variable() {
     assert_parse!({
-        y = 2
-        x = (3 + y)
+        let y = 2
+        let x = (3 + y)
     }{
         y => Invalid
         x => Nat(5)
@@ -71,9 +71,9 @@ fn interpret_add_from_variable() {
 }
 
 #[test]
-fn interpret_reassign() {
+fn interpret_assign() {
     assert_parse!({
-        x = 1
+        let x = 1
         x = 2
     }{
         x => Nat(2)
@@ -81,10 +81,10 @@ fn interpret_reassign() {
 }
 
 #[test]
-fn interpret_multiple_assigns() {
+fn interpret_multiple_declarations() {
     assert_parse!({
-        x = 1
-        y = 2
+        let x = 1
+        let y = 2
     }{
         x => Nat(1)
         y => Nat(2)
@@ -94,8 +94,8 @@ fn interpret_multiple_assigns() {
 #[test]
 fn interpret_move() {
     assert_parse!({
-        x = 1
-        y = x
+        let x = 1
+        let y = x
     }{
         x => Invalid
         y => Nat(1)
@@ -103,9 +103,20 @@ fn interpret_move() {
 }
 
 #[test]
-fn interpret_assign_assign() {
+fn interpret_move_on_assign() {
     assert_parse!({
-        x = y = 1
+        let y = 1
+        let x = y = 2
+    }{
+        x => Nat(1)
+        y => Nat(2)
+    });
+}
+
+#[test]
+fn interpret_declaration_declaration() {
+    assert_parse!({
+        let x = let y = 1
     }{
         x => Tup(vec![])
         y => Nat(1)
@@ -115,7 +126,7 @@ fn interpret_assign_assign() {
 #[test]
 fn interpret_tuple() {
     assert_parse!({
-        x = (1, 2, 3)
+        let x = (1, 2, 3)
     }{
         x => Tup(vec![
                 Nat(1),
@@ -128,7 +139,7 @@ fn interpret_tuple() {
 #[test]
 fn interpret_tuple_tuple() {
     assert_parse!({
-        x = (((1 + 1)))
+        let x = (((1 + 1)))
     }{
         x => Tup(vec![
                 Tup(vec![
@@ -141,8 +152,8 @@ fn interpret_tuple_tuple() {
 #[test]
 fn interpret_tuple_indexing() {
     assert_parse!({
-        x = (1, 2, 3)
-        y = x[1]
+        let x = (1, 2, 3)
+        let y = x[1]
     }{
         x => Tup(vec![
                 Nat(1),
@@ -156,7 +167,7 @@ fn interpret_tuple_indexing() {
 #[test]
 fn interpret_union() {
     assert_parse!({
-        x = (1|_|_)
+        let x = (1|_|_)
     }{
         x => Uni(0, Box::new(Nat(1)), 3)
     });
@@ -165,7 +176,7 @@ fn interpret_union() {
 #[test]
 fn interpret_union_union() {
     assert_parse!({
-        x = ((_|2)|_|_)
+        let x = ((_|2)|_|_)
     }{
         x => Uni(0,Box::new(
                 Uni(1, Box::new(
@@ -178,8 +189,8 @@ fn interpret_union_union() {
 #[test]
 fn interpret_scope() {
     assert_parse!({
-        y = {
-            x = 1
+        let y = {
+            let x = 1
             2
         }
     }{
@@ -192,8 +203,8 @@ fn interpret_scope() {
 #[test]
 fn interpret_boolean() {
     assert_parse!({
-        x = true
-        y = false
+        let x = true
+        let y = false
     }{
         x => Bool(true)
         y => Bool(false)
@@ -203,13 +214,11 @@ fn interpret_boolean() {
 #[test]
 fn interpret_if() {
     assert_parse!({
-        if true {
-            x = 1
+        let x = if true {
+            1
         } else {
-            x = 2
+            2
         }
-    }{
-
     }{
         x => Nat(1)
     });
@@ -218,13 +227,11 @@ fn interpret_if() {
 #[test]
 fn interpret_else() {
     assert_parse!({
-        if false {
-            x = 1
+        let x = if false {
+            1
         } else {
-            x = 2
+            2
         }
-    }{
-
     }{
         x => Nat(2)
     });

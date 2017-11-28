@@ -39,13 +39,14 @@ macro_rules! assert_tokens {
 }
 
 #[test]
-fn tokenize_assignment() {
+fn tokenize_declaration() {
     let mut interner = Interner::new();
     let x = interner.intern("x").unwrap();
     let one = interner.intern("1").unwrap();
     assert_tokens!(interner {
-        x = 1
+        let x = 1
     }{
+        Reserved(Let)
         Identifier(x)
         Operator(Assignment)
         Literal(Integer(one))

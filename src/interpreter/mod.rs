@@ -56,10 +56,10 @@ impl Memory {
     {
         self.scopes.push(HashMap::new());
         let result = f(self);
-        let used_scope = self.scopes.pop();
+        let _used_scope = self.scopes.pop();
         #[cfg(test)]
         self.used_scopes.push(
-            used_scope.expect("We pushed scope so this should be always valid.")
+            _used_scope.expect("We pushed scope so this should be always valid.")
         );
         result
     }
@@ -93,6 +93,15 @@ fn interpret_scope(expressions: &[Expression], memory: &mut Memory, interner: &I
 
 fn execute(e: &Expression, memory: &mut Memory, interner: &Interner) -> Value {
     match *e {
+        Declaration { ref identifier, ref value } => {
+            // TODO: Shadowing
+            let value = value
+                .as_ref()
+                .map(|v| execute(&*v, memory, interner))
+                .unwrap_or(Invalid);
+            memory.insert(*identifier, value);
+            Tup(vec![])
+        },
         Literal(ref l) => match *l {
             Integer(ref n) => {
                 let n = interner.resolve(*n).expect("No such literal");
@@ -132,18 +141,13 @@ fn execute(e: &Expression, memory: &mut Memory, interner: &Interner) -> Value {
             }, memory, interner)
         },
         Operation(ref o) => match *o {
-            Assignment {
-                ref identifier,
-                ref value
-            } => {
-                // TODO: Shadowing
+            Assignment { ref identifier, ref value } => {
                 let value = execute(value, memory, interner);
-                memory.insert(*identifier, value);
-                Tup(vec![])
+                let target = memory.get_mut(identifier)
+                    .expect("Invalid variable.");
+                replace(target, value)
             },
-            Addition {
-                ref parameters
-            } => {
+            Addition { ref parameters } => {
                 Nat(parameters.iter()
                     .fold(0, |a, b| {
                         if let Nat(b) = execute(b, memory, interner) {
@@ -153,10 +157,7 @@ fn execute(e: &Expression, memory: &mut Memory, interner: &Interner) -> Value {
                         }
                     }))
             },
-            Indexing {
-                ref target,
-                ref index,
-            } => {
+            Indexing { ref target, ref index, } => {
                 let index = execute(index, memory, interner);
                 match *memory.get_mut(target).unwrap() {
                     Tup(ref mut value) => {

@@ -43,16 +43,50 @@ macro_rules! assert_parse {
 }
 
 #[test]
+fn parse_declaration() {
+    let mut interner = Interner::new();
+    let x = interner.intern("x").unwrap();
+    let one = interner.intern("1").unwrap();
+    assert_parse!(interner {
+        let x = 1
+    }{
+        Declaration {
+            identifier: Identifier(x),
+            value: Some(Box::new(Literal(Integer(one)))),
+        }
+    });
+}
+
+#[test]
+fn parse_empty_declaration() {
+    let mut interner = Interner::new();
+    let x = interner.intern("x").unwrap();
+    assert_parse!(interner {
+        let x
+    }{
+        Declaration {
+            identifier: Identifier(x),
+            value: None,
+        }
+    });
+}
+
+#[test]
 fn parse_assignment() {
     let mut interner = Interner::new();
     let x = interner.intern("x").unwrap();
     let one = interner.intern("1").unwrap();
     assert_parse!(interner {
+        let x
         x = 1
     }{
+        Declaration {
+            identifier: Identifier(x),
+            value: None,
+        }
         Operation(Assignment {
             identifier: Identifier(x),
-            value: Box::new(Literal(Integer(one)))
+            value: Box::new(Literal(Integer(one))),
         })
     });
 }
@@ -61,18 +95,17 @@ fn parse_assignment() {
 fn parse_scope() {
     let mut interner = Interner::new();
     let x = interner.intern("x").unwrap();
-    let one = interner.intern("1").unwrap();
     assert_parse!(interner {
         {
-            x = 1
+            let x
         }
     }{
         Scope {
             expressions: vec![
-                Operation(Assignment {
+                Declaration {
                     identifier: Identifier(x),
-                    value: Box::new(Literal(Integer(one)))
-                })
+                    value: None,
+                }
             ]
         }
     });

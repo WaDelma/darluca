@@ -10,6 +10,10 @@ pub enum Expression {
     Literal(Literal),
     Identifier(Identifier),
     Operation(Operation),
+    Declaration {
+        identifier: Identifier,
+        value: Option<Box<Expression>>,
+    },
     FunctionCall {
         name: Identifier,
         parameters: Vec<Expression>,
