@@ -185,3 +185,21 @@ fn parse_addition() {
         })
     })
 }
+
+#[test]
+fn parse_true() {
+    assert_parse!({
+        true
+    }{
+        Literal(Boolean(true))
+    });
+}
+
+#[test]
+fn parse_false() {
+    assert_parse!({
+        false
+    }{
+        Literal(Boolean(false))
+    });
+}

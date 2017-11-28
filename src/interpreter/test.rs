@@ -177,3 +177,14 @@ fn interpret_scope() {
         x => Nat(1)
     });
 }
+
+#[test]
+fn interpret_boolean() {
+    assert_parse!({
+        x = true
+        y = false
+    }{
+        x => Bool(true),
+        y => Bool(false)
+    });
+}

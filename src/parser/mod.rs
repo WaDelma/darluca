@@ -48,7 +48,7 @@ macro_rules! identifier (
   );
 );
 
-macro_rules! literal (
+macro_rules! literal_integer (
   ($i: expr,) => (
     {
         (|| {
@@ -66,6 +66,25 @@ macro_rules! literal (
         })()
     }
   );
+);
+
+named!(literal_boolean(Tks) -> Literal,
+    alt_complete!(
+        tag_token!(Token::Reserved(True)) => {|_| Literal::Boolean(true)} |
+        tag_token!(Token::Reserved(False)) => {|_| Literal::Boolean(false)}
+    )
+);
+
+named!(literal(Tks) -> Expression,
+    map!(
+        alt_complete!(
+                literal_integer!() |
+                literal_boolean
+        ),
+        |literal| {
+            Expression::Literal(literal)
+        }
+    )
 );
 
 named!(assignment(Tks) -> Operation,
@@ -224,7 +243,7 @@ named!(expression(Tks) -> Expression,
         tuple |
         union |
         operation |
-        literal!() => {Expression::Literal} |
+        literal |
         identifier!() => {Expression::Identifier}
     )
 );

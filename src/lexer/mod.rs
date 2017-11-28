@@ -62,7 +62,9 @@ impl<'ctx> Lexer<'ctx> {
 
     method!(reserved<Lexer<'ctx>>(&[u8]) -> tokens::Reserved, self,
         alt!(
-            tag!("let") => {|_| Let}
+            tag!("let") => {|_| Let} |
+            tag!("true") => {|_| True} |
+            tag!("false") => {|_| False}
         )
     );
 

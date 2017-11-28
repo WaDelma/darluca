@@ -50,5 +50,6 @@ pub struct Identifier(pub Symbol);
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Literal {
-    Integer(Symbol)
+    Integer(Symbol),
+    Boolean(bool)
 }

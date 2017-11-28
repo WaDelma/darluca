@@ -139,3 +139,21 @@ fn tokenize_addition() {
         Punctuation(Parenthesis(Close))
     })
 }
+
+#[test]
+fn tokenize_true() {
+    assert_tokens!({
+        true
+    }{
+        Reserved(True)
+    });
+}
+
+#[test]
+fn tokenize_false() {
+    assert_tokens!({
+        false
+    }{
+        Reserved(False)
+    });
+}

@@ -24,6 +24,8 @@ pub enum Operator {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Reserved {
     Let,
+    True,
+    False,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

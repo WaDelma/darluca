@@ -71,6 +71,7 @@ pub enum Value {
     Initial,
     Tup(Vec<Value>),
     Nat(usize),
+    Bool(bool),
     Uni(usize, Box<Value>, usize)
 }
 
@@ -96,13 +97,16 @@ fn execute(e: &Expression, memory: &mut Memory, interner: &Interner) -> Value {
             Integer(ref n) => {
                 let n = interner.resolve(*n).expect("No such literal");
                 Nat(str::parse(n).expect("Literal couldn't be parsed to integer"))
+            },
+            Boolean(ref b) => {
+                Bool(*b)
             }
         },
         Identifier(ref i) => memory.insert(*i, Invalid).expect("No such variable"),
         Tuple { ref value } => {
             Tup(value.iter()
                 .map(|e| execute(e, memory, interner))
-                .collect() 
+                .collect()
             )
         },
         Union(ref u) => {
