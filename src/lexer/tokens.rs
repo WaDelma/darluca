@@ -9,6 +9,7 @@ use interner::Symbol;
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Token {
     Identifier(Symbol),
+    Type(Symbol),
     Literal(Literal),
     Reserved(Reserved),
     Operator(Operator),
@@ -44,6 +45,7 @@ pub enum Punctuation {
     Placeholder,
     SemiColon,
     Colon,
+    Comma,
     Bar,
 }
 

@@ -3,7 +3,7 @@ use symtern::prelude::*;
 use interner::Interner;
 
 use super::parse;
-use super::ast::{self, Ast, Expression, Identifier, Literal, Operation};
+use super::ast::{self, Ast, Expression, Identifier, Type, Literal, Operation};
 use super::ast::Expression::*;
 use super::ast::Literal::*;
 use super::ast::Operation::*;
@@ -47,11 +47,13 @@ fn parse_declaration() {
     let mut interner = Interner::new();
     let x = interner.intern("x").unwrap();
     let one = interner.intern("1").unwrap();
+    let int = interner.intern("I32").unwrap();
     assert_parse!(interner {
-        let x = 1
+        let x: I32 = 1
     }{
         Declaration {
             identifier: Identifier(x),
+            ty: Some(Type(int)),
             value: Some(Box::new(Literal(Integer(one)))),
         }
     });
@@ -67,6 +69,7 @@ fn parse_empty_declaration() {
         Declaration {
             identifier: Identifier(x),
             value: None,
+            ty: None,
         }
     });
 }
@@ -83,6 +86,7 @@ fn parse_assignment() {
         Declaration {
             identifier: Identifier(x),
             value: None,
+            ty: None,
         }
         Operation(Assignment {
             identifier: Identifier(x),
@@ -105,6 +109,7 @@ fn parse_scope() {
                 Declaration {
                     identifier: Identifier(x),
                     value: None,
+                    ty: None,
                 }
             ]
         }

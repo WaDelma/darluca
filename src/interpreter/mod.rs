@@ -68,11 +68,10 @@ impl Memory {
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Value {
     Invalid,
-    Initial,
     Tup(Vec<Value>),
-    Nat(usize),
+    Uni(usize, Box<Value>, usize),
+    Int(i32),
     Bool(bool),
-    Uni(usize, Box<Value>, usize)
 }
 
 
@@ -93,19 +92,30 @@ fn interpret_scope(expressions: &[Expression], memory: &mut Memory, interner: &I
 
 fn execute(e: &Expression, memory: &mut Memory, interner: &Interner) -> Value {
     match *e {
-        Declaration { ref identifier, ref value } => {
+        Declaration { ref identifier, ref value, ref ty } => {
             // TODO: Shadowing
             let value = value
                 .as_ref()
                 .map(|v| execute(&*v, memory, interner))
                 .unwrap_or(Invalid);
+            // TODO: Real types
+            if let Some(ref ty) = *ty {
+                match interner.resolve(ty.0) {
+                    Ok("I32") => {
+                        if let &Int(_) = &value {} else {
+                            panic!("Trying to assign wrong type of value.");
+                        }
+                    },
+                    ty => panic!("Unknown type: {:?}", ty),
+                }
+            }
             memory.insert(*identifier, value);
             Tup(vec![])
         },
         Literal(ref l) => match *l {
             Integer(ref n) => {
                 let n = interner.resolve(*n).expect("No such literal");
-                Nat(str::parse(n).expect("Literal couldn't be parsed to integer"))
+                Int(str::parse(n).expect("Literal couldn't be parsed to integer"))
             },
             Boolean(ref b) => {
                 Bool(*b)
@@ -148,9 +158,9 @@ fn execute(e: &Expression, memory: &mut Memory, interner: &Interner) -> Value {
                 replace(target, value)
             },
             Addition { ref parameters } => {
-                Nat(parameters.iter()
+                Int(parameters.iter()
                     .fold(0, |a, b| {
-                        if let Nat(b) = execute(b, memory, interner) {
+                        if let Int(b) = execute(b, memory, interner) {
                             a + b
                         } else {
                             panic!("Cannot add");
@@ -162,10 +172,10 @@ fn execute(e: &Expression, memory: &mut Memory, interner: &Interner) -> Value {
                 match *memory.get_mut(target).unwrap() {
                     Tup(ref mut value) => {
                         let index = match index {
-                            Nat(n) => n,
+                            Int(n) => n,
                             _ => panic!("Cannot index with non-integer."),
                         };
-                        let value = value.get_mut(index)
+                        let value = value.get_mut(index as usize)
                             .expect("Out of bounds access");
                         replace(value, Invalid)
                     }

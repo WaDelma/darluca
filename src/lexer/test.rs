@@ -43,11 +43,14 @@ fn tokenize_declaration() {
     let mut interner = Interner::new();
     let x = interner.intern("x").unwrap();
     let one = interner.intern("1").unwrap();
+    let int = interner.intern("I32").unwrap();
     assert_tokens!(interner {
-        let x = 1
+        let x: I32 = 1
     }{
         Reserved(Let)
         Identifier(x)
+        Punctuation(Colon)
+        Type(int)
         Operator(Assignment)
         Literal(Integer(one))
     });
@@ -63,7 +66,7 @@ fn tokenize_tuple() {
     }{
         Punctuation(Parenthesis(Open))
         Literal(Integer(one))
-        Punctuation(Colon)
+        Punctuation(Comma)
         Literal(Integer(two))
         Punctuation(Parenthesis(Close))
     });
@@ -90,7 +93,7 @@ fn tokenize_index_tuple() {
     }{
         Punctuation(Parenthesis(Open))
         Literal(Integer(one))
-        Punctuation(Colon)
+        Punctuation(Comma)
         Literal(Integer(two))
         Punctuation(Parenthesis(Close))
         Punctuation(Square(Open))

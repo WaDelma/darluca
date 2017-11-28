@@ -55,7 +55,7 @@ fn interpret_add_and_declaration() {
     assert_parse!({
         let x = (1 + 2)
     }{
-        x => Nat(3)
+        x => Int(3)
     });
 }
 
@@ -66,7 +66,7 @@ fn interpret_add_from_variable() {
         let x = (3 + y)
     }{
         y => Invalid
-        x => Nat(5)
+        x => Int(5)
     });
 }
 
@@ -76,7 +76,7 @@ fn interpret_assign() {
         let x = 1
         x = 2
     }{
-        x => Nat(2)
+        x => Int(2)
     });
 }
 
@@ -86,8 +86,8 @@ fn interpret_multiple_declarations() {
         let x = 1
         let y = 2
     }{
-        x => Nat(1)
-        y => Nat(2)
+        x => Int(1)
+        y => Int(2)
     });
 }
 
@@ -98,7 +98,7 @@ fn interpret_move() {
         let y = x
     }{
         x => Invalid
-        y => Nat(1)
+        y => Int(1)
     });
 }
 
@@ -108,8 +108,8 @@ fn interpret_move_on_assign() {
         let y = 1
         let x = y = 2
     }{
-        x => Nat(1)
-        y => Nat(2)
+        x => Int(1)
+        y => Int(2)
     });
 }
 
@@ -119,7 +119,7 @@ fn interpret_declaration_declaration() {
         let x = let y = 1
     }{
         x => Tup(vec![])
-        y => Nat(1)
+        y => Int(1)
     });
 }
 
@@ -129,9 +129,9 @@ fn interpret_tuple() {
         let x = (1, 2, 3)
     }{
         x => Tup(vec![
-                Nat(1),
-                Nat(2),
-                Nat(3)
+                Int(1),
+                Int(2),
+                Int(3)
             ])
     });
 }
@@ -143,7 +143,7 @@ fn interpret_tuple_tuple() {
     }{
         x => Tup(vec![
                 Tup(vec![
-                    Nat(2)
+                    Int(2)
                 ])
             ])
     });
@@ -156,11 +156,11 @@ fn interpret_tuple_indexing() {
         let y = x[1]
     }{
         x => Tup(vec![
-                Nat(1),
+                Int(1),
                 Invalid,
-                Nat(3)
+                Int(3)
             ])
-        y => Nat(2)
+        y => Int(2)
     });
 }
 
@@ -169,7 +169,7 @@ fn interpret_union() {
     assert_parse!({
         let x = (1|_|_)
     }{
-        x => Uni(0, Box::new(Nat(1)), 3)
+        x => Uni(0, Box::new(Int(1)), 3)
     });
 }
 
@@ -180,7 +180,7 @@ fn interpret_union_union() {
     }{
         x => Uni(0,Box::new(
                 Uni(1, Box::new(
-                    Nat(2)
+                    Int(2)
                 ), 2)
             ), 3)
     });
@@ -194,9 +194,9 @@ fn interpret_scope() {
             2
         }
     }{
-        y => Nat(2)
+        y => Int(2)
     }{
-        x => Nat(1)
+        x => Int(1)
     });
 }
 
@@ -220,7 +220,7 @@ fn interpret_if() {
             2
         }
     }{
-        x => Nat(1)
+        x => Int(1)
     });
 }
 
@@ -233,6 +233,6 @@ fn interpret_else() {
             2
         }
     }{
-        x => Nat(2)
+        x => Int(2)
     });
 }

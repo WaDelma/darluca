@@ -1,6 +1,6 @@
 use std::str;
 
-use nom::{is_digit, is_alphabetic};
+use nom::{is_digit, is_alphanumeric};
 use symtern::prelude::*;
 
 use interner::Interner;
@@ -36,11 +36,35 @@ impl<'ctx> Lexer<'ctx> {
 
     method!(identifier<Lexer<'ctx>>(&[u8]) -> Token, self,
         map!(
-            take_while1!(is_alphabetic),
+            verify!(
+                take_while1!(is_alphanumeric),
+                |val: &[u8]| {
+                    let fst = char::from(val[0]);
+                    fst.is_alphabetic() && fst.is_lowercase()
+                }
+            ),
             |ident| {
                 str::from_utf8(ident)
                     .map(|i| self.interner.intern(i).unwrap())
                     .map(Identifier)
+                    .expect("is_alphabetic should ensure that ident is valid utf-8.")
+            }
+        )
+    );
+
+    method!(parse_type<Lexer<'ctx>>(&[u8]) -> Token, self,
+        map!(
+            verify!(
+                take_while1!(is_alphanumeric),
+                |val: &[u8]| {
+                    let fst = char::from(val[0]);
+                    fst.is_alphabetic() && fst.is_uppercase()
+                }
+            ),
+            |ident| {
+                str::from_utf8(ident)
+                    .map(|i| self.interner.intern(i).unwrap())
+                    .map(Type)
                     .expect("is_alphabetic should ensure that ident is valid utf-8.")
             }
         )
@@ -88,7 +112,8 @@ impl<'ctx> Lexer<'ctx> {
             tag!("(") => {|_| Parenthesis(Open)} |
             tag!(")") => {|_| Parenthesis(Close)} |
             tag!(";") => {|_| SemiColon} |
-            tag!(",") => {|_| Colon} |
+            tag!(":") => {|_| Colon} |
+            tag!(",") => {|_| Comma} |
             tag!("|") => {|_| Bar} |
             tag!("_") => {|_| Placeholder}
         )
@@ -100,7 +125,8 @@ impl<'ctx> Lexer<'ctx> {
             call_m!(self.operator) => {Operator} |
             call_m!(self.reserved) => {Reserved} |
             call_m!(self.literal) => {Literal} |
-            call_m!(self.identifier)
+            call_m!(self.identifier) |
+            call_m!(self.parse_type)
         )
     );
 

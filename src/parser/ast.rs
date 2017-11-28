@@ -12,6 +12,7 @@ pub enum Expression {
     Operation(Operation),
     Declaration {
         identifier: Identifier,
+        ty: Option<Type>,
         value: Option<Box<Expression>>,
     },
     FunctionCall {
@@ -56,6 +57,9 @@ pub struct Union {
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct Identifier(pub Symbol);
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub struct Type(pub Symbol);
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Literal {

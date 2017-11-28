@@ -48,6 +48,24 @@ macro_rules! identifier (
   );
 );
 
+macro_rules! ty (
+  ($i: expr,) => (
+    {
+        (|| {
+            let (i1, t1) = try_parse!($i, take!(1));
+            if t1.tokens.is_empty() {
+                IResult::Error(error_position!(ErrorKind::Tag, $i))
+            } else {
+                match t1.tokens[0] {
+                    Token::Type(name) => IResult::Done(i1, Type(name)),
+                    _ => IResult::Error(error_position!(ErrorKind::Tag, $i)),
+                }
+            }
+        })()
+    }
+  );
+);
+
 macro_rules! literal_integer (
   ($i: expr,) => (
     {
@@ -159,10 +177,10 @@ named!(tuple(Tks) -> Expression,
         do_parse!(
             tag_token!(Parenthesis(Open)) >>
             expressions: separated_list!(
-                tag_token!(Colon),
+                tag_token!(Comma),
                 expression
             ) >>
-            opt!(tag_token!(Colon)) >>
+            opt!(tag_token!(Comma)) >>
             tag_token!(Parenthesis(Close)) >>
             (expressions)
         ),
@@ -269,16 +287,22 @@ named!(declaration(Tks) -> Expression,
         do_parse!(
             tag_token!(Let) >>
             identifier: identifier!() >>
+            ty: opt!(complete!(do_parse!(
+                tag_token!(Colon) >>
+                ty: ty!() >>
+                (ty)
+            ))) >>
             value: opt!(complete!(do_parse!(
                 tag_token!(Assignment) >>
                 value: expression >>
                 (value)
             ))) >>
-            (identifier, value.map(Box::new))
+            (identifier, ty, value.map(Box::new))
         ),
-        |(identifier, value)| {
+        |(identifier, ty, value)| {
             Expression::Declaration {
                 identifier,
+                ty,
                 value,
             }
         }
