@@ -58,8 +58,12 @@ pub struct Union {
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct Identifier(pub Symbol);
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-pub struct Type(pub Symbol);
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+pub enum Type {
+    Named(Symbol),
+    Tuple(Vec<Type>),
+    Union(Vec<Type>)
+}
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Literal {

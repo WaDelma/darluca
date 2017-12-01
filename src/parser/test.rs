@@ -63,13 +63,14 @@ fn parse_declaration() {
 fn parse_empty_declaration() {
     let mut interner = Interner::new();
     let x = interner.intern("x").unwrap();
+    let terminal = interner.intern("(,)").unwrap();
     assert_parse!(interner {
-        let x
+        let x: (,)
     }{
         Declaration {
             identifier: Identifier(x),
             value: None,
-            ty: None,
+            ty: Some(Type(terminal)),
         }
     });
 }
@@ -79,14 +80,15 @@ fn parse_assignment() {
     let mut interner = Interner::new();
     let x = interner.intern("x").unwrap();
     let one = interner.intern("1").unwrap();
+    let int = interner.intern("I32").unwrap();
     assert_parse!(interner {
-        let x
+        let x: I32
         x = 1
     }{
         Declaration {
             identifier: Identifier(x),
             value: None,
-            ty: None,
+            ty: Some(Type(int)),
         }
         Operation(Assignment {
             identifier: Identifier(x),
@@ -99,9 +101,10 @@ fn parse_assignment() {
 fn parse_scope() {
     let mut interner = Interner::new();
     let x = interner.intern("x").unwrap();
+    let initial = interner.intern("(|)").unwrap();
     assert_parse!(interner {
         {
-            let x
+            let x: (|)
         }
     }{
         Scope {
@@ -109,7 +112,7 @@ fn parse_scope() {
                 Declaration {
                     identifier: Identifier(x),
                     value: None,
-                    ty: None,
+                    ty: Some(Type(initial)),
                 }
             ]
         }

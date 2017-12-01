@@ -48,7 +48,7 @@ macro_rules! identifier (
   );
 );
 
-macro_rules! ty (
+macro_rules! ty_identifier (
   ($i: expr,) => (
     {
         (|| {
@@ -57,7 +57,7 @@ macro_rules! ty (
                 IResult::Error(error_position!(ErrorKind::Tag, $i))
             } else {
                 match t1.tokens[0] {
-                    Token::Type(name) => IResult::Done(i1, Type(name)),
+                    Token::Type(name) => IResult::Done(i1, Type::Ident(name)),
                     _ => IResult::Error(error_position!(ErrorKind::Tag, $i)),
                 }
             }
@@ -103,6 +103,10 @@ named!(literal(Tks) -> Expression,
             Expression::Literal(literal)
         }
     )
+);
+
+named!(ty(Tks) -> Type,
+    
 );
 
 named!(assignment(Tks) -> Operation,
