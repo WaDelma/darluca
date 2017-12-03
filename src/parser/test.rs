@@ -53,7 +53,7 @@ fn parse_declaration() {
     }{
         Declaration {
             identifier: Identifier(x),
-            ty: Some(Type(int)),
+            ty: Some(Type::Named(int)),
             value: Some(Box::new(Literal(Integer(one)))),
         }
     });
@@ -63,14 +63,13 @@ fn parse_declaration() {
 fn parse_empty_declaration() {
     let mut interner = Interner::new();
     let x = interner.intern("x").unwrap();
-    let terminal = interner.intern("(,)").unwrap();
     assert_parse!(interner {
         let x: (,)
     }{
         Declaration {
             identifier: Identifier(x),
             value: None,
-            ty: Some(Type(terminal)),
+            ty: Some(Type::Tuple(vec![])),
         }
     });
 }
@@ -88,7 +87,7 @@ fn parse_assignment() {
         Declaration {
             identifier: Identifier(x),
             value: None,
-            ty: Some(Type(int)),
+            ty: Some(Type::Named(int)),
         }
         Operation(Assignment {
             identifier: Identifier(x),
@@ -101,7 +100,6 @@ fn parse_assignment() {
 fn parse_scope() {
     let mut interner = Interner::new();
     let x = interner.intern("x").unwrap();
-    let initial = interner.intern("(|)").unwrap();
     assert_parse!(interner {
         {
             let x: (|)
@@ -112,7 +110,7 @@ fn parse_scope() {
                 Declaration {
                     identifier: Identifier(x),
                     value: None,
-                    ty: Some(Type(initial)),
+                    ty: Some(Type::Union(vec![])),
                 }
             ]
         }

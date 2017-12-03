@@ -116,7 +116,7 @@ fn interpret_move_on_assign() {
 #[test]
 fn interpret_declaration_declaration() {
     assert_parse!({
-        let x: () = let y: I32 = 1
+        let x: (,) = let y: I32 = 1
     }{
         x => Tup(vec![])
         y => Int(1)
@@ -126,7 +126,7 @@ fn interpret_declaration_declaration() {
 #[test]
 fn interpret_tuple() {
     assert_parse!({
-        let x: (I32, I32, I32) = (1, 2, 3)
+        let x: (I32, I32, I32,) = (1, 2, 3)
     }{
         x => Tup(vec![
                 Int(1),
@@ -139,7 +139,7 @@ fn interpret_tuple() {
 #[test]
 fn interpret_tuple_tuple() {
     assert_parse!({
-        let x: ((I32)) = (((1 + 1)))
+        let x: ((I32,),) = (((1 + 1)))
     }{
         x => Tup(vec![
                 Tup(vec![
@@ -152,7 +152,7 @@ fn interpret_tuple_tuple() {
 #[test]
 fn interpret_tuple_indexing() {
     assert_parse!({
-        let x: (I32, I32, I32) = (1, 2, 3)
+        let x: (I32, I32, I32,) = (1, 2, 3)
         let y: I32 = x[1]
     }{
         x => Tup(vec![
@@ -167,7 +167,7 @@ fn interpret_tuple_indexing() {
 #[test]
 fn interpret_union() {
     assert_parse!({
-        let x: (I32|I32|I32) = (1|_|_)
+        let x: (I32|I32|I32|) = (1|_|_)
     }{
         x => Uni(0, Box::new(Int(1)), 3)
     });
@@ -176,7 +176,7 @@ fn interpret_union() {
 #[test]
 fn interpret_union_union() {
     assert_parse!({
-        let x: ((I32|I32)|I32|I32) = ((_|2)|_|_)
+        let x: ((I32|I32|)|I32|I32|) = ((_|2)|_|_)
     }{
         x => Uni(0,Box::new(
                 Uni(1, Box::new(
@@ -203,8 +203,8 @@ fn interpret_scope() {
 #[test]
 fn interpret_boolean() {
     assert_parse!({
-        let x: bool = true
-        let y: bool = false
+        let x: Bool = true
+        let y: Bool = false
     }{
         x => Bool(true)
         y => Bool(false)

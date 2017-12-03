@@ -57,7 +57,7 @@ macro_rules! ty_identifier (
                 IResult::Error(error_position!(ErrorKind::Tag, $i))
             } else {
                 match t1.tokens[0] {
-                    Token::Type(name) => IResult::Done(i1, Type::Ident(name)),
+                    Token::Type(name) => IResult::Done(i1, Type::Named(name)),
                     _ => IResult::Error(error_position!(ErrorKind::Tag, $i)),
                 }
             }
@@ -105,8 +105,38 @@ named!(literal(Tks) -> Expression,
     )
 );
 
+named!(ty_union(Tks) -> Type,
+    do_parse!(
+        tag_token!(Parenthesis(Open)) >>
+        tys: separated_list!(
+            tag_token!(Bar),
+            ty
+        ) >>
+        tag_token!(Bar) >>
+        tag_token!(Parenthesis(Close)) >>
+        (Type::Union(tys))
+    )
+);
+
+named!(ty_tuple(Tks) -> Type,
+    do_parse!(
+        tag_token!(Parenthesis(Open)) >>
+        tys: separated_list!(
+            tag_token!(Comma),
+            ty
+        ) >>
+        tag_token!(Comma) >>
+        tag_token!(Parenthesis(Close)) >>
+        (Type::Tuple(tys))
+    )
+);
+
 named!(ty(Tks) -> Type,
-    
+    alt!(
+        ty_union |
+        ty_tuple |
+        ty_identifier!()
+    )
 );
 
 named!(assignment(Tks) -> Operation,
@@ -293,7 +323,7 @@ named!(declaration(Tks) -> Expression,
             identifier: identifier!() >>
             ty: opt!(complete!(do_parse!(
                 tag_token!(Colon) >>
-                ty: ty!() >>
+                ty: ty >>
                 (ty)
             ))) >>
             value: opt!(complete!(do_parse!(

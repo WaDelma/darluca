@@ -3,7 +3,7 @@ use symtern::prelude::*;
 use std::collections::HashMap;
 use std::mem::replace;
 
-use parser::ast::{self, Ast, Expression};
+use parser::ast::{self, Ast, Expression, Type};
 use parser::ast::Expression::*;
 use parser::ast::Literal::*;
 use parser::ast::Operation::*;
@@ -90,6 +90,46 @@ fn interpret_scope(expressions: &[Expression], memory: &mut Memory, interner: &I
     })
 }
 
+fn type_matches(val: &Value, ty: &Type, interner: &Interner) -> bool {
+    use self::Value::*;
+    match *val {
+        Invalid => panic!("Invalid value"),
+        Tup(ref v) => {
+            if let Type::Tuple(ref t) = *ty {
+                v.iter().zip(t.iter())
+                    .all(|(v, t)| type_matches(v, t, interner))
+            } else {
+                false
+            }
+        },
+        Uni(ref index, ref v, ref size) => {
+            if let Type::Union(ref t) = *ty {
+                if t.len() == *size {
+                    type_matches(&v, &t[*index], interner)
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        },
+        Int(_) => {
+            if let Type::Named(ref n) = *ty {
+                "I32" == interner.resolve(*n).unwrap()
+            } else {
+                false
+            }
+        }
+        Bool(_) => {
+            if let Type::Named(ref n) = *ty {
+                "Bool" == interner.resolve(*n).unwrap()
+            } else {
+                false
+            }
+        }
+    }
+}
+
 fn execute(e: &Expression, memory: &mut Memory, interner: &Interner) -> Value {
     match *e {
         Declaration { ref identifier, ref value, ref ty } => {
@@ -98,15 +138,9 @@ fn execute(e: &Expression, memory: &mut Memory, interner: &Interner) -> Value {
                 .as_ref()
                 .map(|v| execute(&*v, memory, interner))
                 .unwrap_or(Invalid);
-            // TODO: Real types
             if let Some(ref ty) = *ty {
-                match interner.resolve(ty.0) {
-                    Ok("I32") => {
-                        if let &Int(_) = &value {} else {
-                            panic!("Trying to assign wrong type of value.");
-                        }
-                    },
-                    ty => panic!("Unknown type: {:?}", ty),
+                if !type_matches(&value, ty, interner) {
+                    panic!("Trying to assign wrong type of value. {:?} is not of type {:?}", value, ty);
                 }
             }
             memory.insert(*identifier, value);

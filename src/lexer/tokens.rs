@@ -97,6 +97,12 @@ pub struct Tks<'a> {
     pub tokens: &'a [Token],
 }
 
+impl<'a> Tks<'a> {
+    pub fn len(&self) -> usize {
+        self.tokens.len()
+    }
+}
+
 impl<'a> InputLength for Tks<'a> {
     #[inline]
     fn input_len(&self) -> usize {
