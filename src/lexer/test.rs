@@ -190,10 +190,12 @@ fn tokenize_function_declaration() {
     let fun = interner.intern("fun").unwrap();
     let int = interner.intern("I32").unwrap();
     let x = interner.intern("x").unwrap();
+    let one = interner.intern("1").unwrap();
     assert_tokens!(interner {
         let fun: (I32 -> I32) = [x,] -> {
             x
         }
+        fun[1,]
     }{
         Reserved(Let)
         Identifier(fun)
@@ -212,5 +214,10 @@ fn tokenize_function_declaration() {
         Punctuation(Curly(Open))
         Identifier(x)
         Punctuation(Curly(Close))
+        Identifier(fun)
+        Punctuation(Square(Open))
+        Literal(Integer(one))
+        Punctuation(Comma)
+        Punctuation(Square(Close))
     });
 }

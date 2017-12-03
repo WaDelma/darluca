@@ -236,3 +236,47 @@ fn interpret_else() {
         x => Int(2)
     });
 }
+
+#[test]
+fn intepret_moving_into_scope() {
+    assert_parse!({
+        let x: I32 = 1
+        let y: I32 = {
+            x
+        }
+    }{
+        x => Invalid
+        y => Int(1)
+    });
+}
+
+#[test]
+fn interpret_function() {
+    assert_parse!({
+        let fun: (I32 -> I32) = [x,] -> {
+            x
+        }
+        let y = fun[1,]
+    }{
+        fun => Invalid
+        y => Int(1)
+    });
+}
+
+#[test]
+fn interpret_closure() {
+    assert_parse!({
+        let fun: ([,] -> I32) = {
+            let x: I32 = 1
+            [,] -> {
+                x
+            }
+        }
+        let y = fun[,]
+    }{
+        fun => Invalid
+        y => Int(1)
+    }{
+        x => Invalid
+    });
+}

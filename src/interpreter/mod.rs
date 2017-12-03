@@ -1,7 +1,8 @@
 use symtern::prelude::*;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::mem::replace;
+use std::iter::{once, FromIterator};
 
 use parser::ast::{self, Ast, Expression, Type};
 use parser::ast::Expression::*;
@@ -47,8 +48,12 @@ impl Memory {
         None
     }
 
-    fn insert(&mut self, i: ast::Identifier, v: Value) -> Option<Value> {
+    fn create(&mut self, i: ast::Identifier, v: Value) -> Option<Value> {
         self.scopes.last_mut().and_then(|l| l.insert(i, v))
+    }
+
+    fn update(&mut self, i: &ast::Identifier, v: Value) -> Option<Value> {
+        self.get_mut(i).map(|va| replace(va, v))
     }
 
     fn scope<F, T>(&mut self, f: F) -> T
@@ -65,6 +70,16 @@ impl Memory {
     }
 }
 
+impl FromIterator<(ast::Identifier, Value)> for Memory {
+    fn from_iter<I>(iter: I) -> Memory
+        where I: IntoIterator<Item=(ast::Identifier, Value)>
+    {
+        let mut mem = Memory::new();
+        mem.scopes.push(iter.into_iter().collect());
+        mem
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Value {
     Invalid,
@@ -72,6 +87,7 @@ pub enum Value {
     Uni(usize, Box<Value>, usize),
     Int(i32),
     Bool(bool),
+    Fun(Vec<ast::Identifier>, Vec<Expression>, Vec<(ast::Identifier, Value)>),
 }
 
 
@@ -119,11 +135,95 @@ fn type_matches(val: &Value, ty: &Type, interner: &Interner) -> bool {
         } else {
             false
         },
+        Fun(_, _, _) => if let Type::Function(_, _) = *ty {
+            true
+        } else {
+            false
+        },
+    }
+}
+
+fn find_free_variables<'a, I>(free: &mut HashSet<ast::Identifier>, closed: &mut Memory, exprs: I)
+    where I: IntoIterator<Item=&'a Expression>,
+{
+    for e in exprs {
+        match *e {
+            Identifier(ref i) => if closed.get(i).is_none() {
+                free.insert(*i);
+            },
+            Operation(ref op) => match *op {
+                Assignment { ref identifier, ref value, } => {
+                    if closed.get(identifier).is_none() {
+                        free.insert(*identifier);
+                    }
+                    find_free_variables(free, closed, once(&**value));
+                },
+                Addition { ref parameters, } => {
+                    find_free_variables(free, closed, &parameters[..]);
+                },
+                Indexing { ref target, ref index, } => {
+                    if closed.get(target).is_none() {
+                        free.insert(*target);
+                    }
+                    find_free_variables(free, closed, once(&**index));
+                },
+                Calling { ref name, ref parameters, } => {
+                    if closed.get(name).is_none() {
+                        free.insert(*name);
+                    }
+                    find_free_variables(free, closed, &parameters[..]);
+                },
+            },
+            Declaration { ref identifier, ref value, ..} => {
+                if let Some(ref e) = *value {
+                    find_free_variables(free, closed, once(&**e));
+                }
+                closed.create(*identifier, Invalid);
+            },
+            Function { ref params, ref expressions, } => {
+                closed.scope(|closed| {
+                    for p in params {
+                        closed.create(*p, Invalid);
+                    }
+                    find_free_variables(free, closed, expressions);
+                });
+            },
+            If { ref condition, ref expressions, ref elses, } => {
+                find_free_variables(free, closed, once(&**condition));
+                closed.scope(|closed|
+                    find_free_variables(free, closed, &expressions[..]));
+                closed.scope(|closed|
+                    find_free_variables(free, closed, &elses[..]));
+            },
+            Tuple { ref value, } =>
+                find_free_variables(free, closed, &value[..]),
+            Union(Some(ref u)) =>
+                find_free_variables(free, closed, once(&*u.value)),
+            Scope { ref expressions, } =>
+                closed.scope(|closed|
+                    find_free_variables(free, closed, expressions)),
+            _ => {}
+        }
     }
 }
 
 fn execute(e: &Expression, memory: &mut Memory, interner: &Interner) -> Value {
     match *e {
+        Scope { ref expressions } => interpret_scope(expressions, memory, interner),
+        Function { ref params, ref expressions } => Memory::new().scope(|mut closed| {
+            let mut free = HashSet::new();
+            for p in params.iter() {
+                closed.create(*p, Invalid);
+            }
+            find_free_variables(&mut free, &mut closed, expressions);
+            let closed_over = free.iter()
+                .map(|f| {
+                    let c = memory.update(f, Invalid)
+                        .expect(&format!("Failed to close over variable: {:?} => {:?}", f, interner.resolve(f.0)));
+                    (*f, c)
+                }).collect();
+            Value::Fun(params.clone(), expressions.clone(), closed_over)
+        }),
         Declaration { ref identifier, ref value, ref ty } => {
             // TODO: Shadowing
             let value = value
@@ -135,7 +235,7 @@ fn execute(e: &Expression, memory: &mut Memory, interner: &Interner) -> Value {
                     panic!("Trying to assign wrong type of value. {:?} is not of type {:?}", value, ty);
                 }
             }
-            memory.insert(*identifier, value);
+            memory.create(*identifier, value);
             Tup(vec![])
         },
         Literal(ref l) => match *l {
@@ -147,23 +247,19 @@ fn execute(e: &Expression, memory: &mut Memory, interner: &Interner) -> Value {
                 Bool(*b)
             }
         },
-        Identifier(ref i) => memory.insert(*i, Invalid).expect("No such variable"),
-        Tuple { ref value } => {
-            Tup(value.iter()
+        Identifier(ref i) => {
+            memory.update(i, Invalid).expect(&format!("No such variable: {:?} => {:?}", i.0, interner.resolve(i.0)))
+        },
+        Tuple { ref value } => Tup(
+            value.iter()
                 .map(|e| execute(e, memory, interner))
                 .collect()
-            )
-        },
-        Union(ref u) => {
-            if let Some(ref u) = *u {
-                let value = execute(&*u.value, memory, interner);
-                Uni(u.position, Box::new(value), u.size)
-            } else {
-                Uni(0, Box::new(Invalid), 0)
-            }
-        },
-        Scope { ref expressions } => {
-            interpret_scope(expressions, memory, interner)
+        ),
+        Union(ref u) => if let Some(ref u) = *u {
+            let value = execute(&*u.value, memory, interner);
+            Uni(u.position, Box::new(value), u.size)
+        } else {
+            Uni(0, Box::new(Invalid), 0)
         },
         If { ref condition, ref expressions, ref elses } => {
             let condition = match execute(condition, memory, interner) {
@@ -183,19 +279,19 @@ fn execute(e: &Expression, memory: &mut Memory, interner: &Interner) -> Value {
                     .expect("Invalid variable.");
                 replace(target, value)
             },
-            Addition { ref parameters } => {
-                Int(parameters.iter()
-                    .fold(0, |a, b| {
+            Addition { ref parameters } => Int(
+                parameters.iter()
+                    .fold(0, |a, b|
                         if let Int(b) = execute(b, memory, interner) {
                             a + b
                         } else {
                             panic!("Cannot add");
                         }
-                    }))
-            },
+                    )
+            ),
             Indexing { ref target, ref index, } => {
                 let index = execute(index, memory, interner);
-                match *memory.get_mut(target).unwrap() {
+                match *memory.get_mut(target).expect("Indexable should exists") {
                     Tup(ref mut value) => {
                         let index = match index {
                             Int(n) => n,
@@ -206,6 +302,21 @@ fn execute(e: &Expression, memory: &mut Memory, interner: &Interner) -> Value {
                         replace(value, Invalid)
                     }
                     _ => panic!("Cannot index"),
+                }
+            },
+            Calling { ref name, ref parameters } => {
+                match memory.update(name, Invalid).expect("Function should exists") {
+                    Fun(params, exprs, closed) => {
+                        let mut memory = params.into_iter()
+                            .zip(
+                                parameters.iter()
+                                    .map(|e| execute(e, memory, interner))
+                            )
+                            .chain(closed.into_iter())
+                            .collect();
+                        interpret_scope(&exprs[..], &mut memory, interner)
+                    }
+                    _ => panic!("Cannot call"),
                 }
             },
             _ => unimplemented!(),

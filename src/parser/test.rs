@@ -210,7 +210,6 @@ fn parse_assignment() {
 #[test]
 fn parse_scope() {
     let mut interner = Interner::new();
-    let x = interner.intern("x").unwrap();
     assert_parse!(interner {
         {
         }
@@ -389,16 +388,45 @@ fn parse_if_else() {
 }
 
 #[test]
+fn parse_moving_into_scope() {
+    let mut interner = Interner::new();
+    let int = interner.intern("I32").unwrap();
+    let x = interner.intern("x").unwrap();
+    let y = interner.intern("y").unwrap();
+    let one = interner.intern("1").unwrap();
+    assert_parse!(interner {
+        let x: I32 = 1
+        let y: I32 = {
+            x
+        }
+    }{
+        Declaration {
+            identifier: Identifier(x),
+            ty: Some(Type::Named(int)),
+            value: Some(Box::new(Literal(Integer(one)))),
+        }
+        Declaration {
+            identifier: Identifier(y),
+            ty: Some(Type::Named(int)),
+            value: Some(Box::new(Scope {
+                expressions: vec![Expression::Identifier(Identifier(x))]
+            })),
+        }
+    });
+}
+
+#[test]
 fn parse_function_declaration() {
     let mut interner = Interner::new();
     let fun = interner.intern("fun").unwrap();
     let int = interner.intern("I32").unwrap();
     let x = interner.intern("x").unwrap();
-    let y = interner.intern("y").unwrap();
+    let one = interner.intern("1").unwrap();
     assert_parse!(interner {
         let fun: (I32 -> I32) = [x,] -> {
             x
         }
+        fun[1,]
     }{
         Declaration {
             identifier: Identifier(fun),
@@ -408,5 +436,9 @@ fn parse_function_declaration() {
             })),
             ty: Some(Type::Function(Box::new(Type::Named(int)), Box::new(Type::Named(int)))),
         }
+        Operation(Calling {
+            name: Identifier(fun),
+            parameters: vec![Literal(Integer(one))]
+        })
     });
 }

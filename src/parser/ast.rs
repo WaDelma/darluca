@@ -5,7 +5,7 @@ pub struct Ast {
     pub expressions: Vec<Expression>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Expression {
     Literal(Literal),
     Identifier(Identifier),
@@ -33,7 +33,7 @@ pub enum Expression {
     },
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Operation {
     Assignment {
         identifier: Identifier,
@@ -52,7 +52,7 @@ pub enum Operation {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct Union {
     pub value: Box<Expression>,
     pub position: usize,
@@ -70,7 +70,7 @@ pub enum Type {
     Function(Box<Type>, Box<Type>)
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Literal {
     Integer(Symbol),
     Boolean(bool)

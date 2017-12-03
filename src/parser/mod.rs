@@ -187,6 +187,7 @@ named!(addition(Tks) -> Operation,
     )
 );
 
+// TODO: Remove indexing and make tuples functions?
 named!(indexing(Tks) -> Operation,
     map!(
         do_parse!(
@@ -205,9 +206,31 @@ named!(indexing(Tks) -> Operation,
     )
 );
 
+named!(calling(Tks) -> Operation,
+    map!(
+        do_parse!(
+            name: identifier!() >>
+            params: tuple >>
+            (name, params)
+        ),
+        |(name, params)| {
+            if let Expression::Tuple { value: parameters } = params {
+                Operation::Calling {
+                    name,
+                    parameters,
+                }
+            } else {
+                // TODO: If enum variants will become types...
+                unreachable!("Parsing tuple should yield tuple");
+            }
+        }
+    )
+);
+
 named!(operation(Tks) -> Expression,
     map!(
         alt_complete!(
+            calling |
             assignment |
             addition |
             indexing
@@ -386,13 +409,13 @@ named!(function(Tks) -> Expression,
 
 named!(expression(Tks) -> Expression,
     alt_complete!(
+        operation |
         function |
         scope |
         branch |
         tuple |
         union |
         declaration |
-        operation |
         literal |
         identifier!() => {Expression::Identifier}
     )
