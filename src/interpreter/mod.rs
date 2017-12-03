@@ -15,13 +15,13 @@ use self::Value::*;
 #[cfg(test)]
 mod test;
 
-struct Memory {
-    scopes: Vec<HashMap<ast::Identifier, Value>>,
+struct Memory<D> {
+    scopes: Vec<HashMap<ast::Identifier, D>>,
     #[cfg(test)]
-    used_scopes: Vec<HashMap<ast::Identifier, Value>>,
+    used_scopes: Vec<HashMap<ast::Identifier, D>>,
 }
 
-impl Memory {
+impl<D> Memory<D> {
     fn new() -> Self {
         Memory {
             scopes: vec![],
@@ -30,7 +30,7 @@ impl Memory {
         }
     }
 
-    fn get(&self, i: &ast::Identifier) -> Option<&Value> {
+    fn get(&self, i: &ast::Identifier) -> Option<&D> {
         for scope in self.scopes.iter().rev() {
             if let r @ Some(_) = scope.get(i) {
                 return r;
@@ -39,7 +39,7 @@ impl Memory {
         None
     }
 
-    fn get_mut(&mut self, i: &ast::Identifier) -> Option<&mut Value> {
+    fn get_mut(&mut self, i: &ast::Identifier) -> Option<&mut D> {
         for scope in self.scopes.iter_mut().rev() {
             if let r @ Some(_) = scope.get_mut(i) {
                 return r;
@@ -48,11 +48,11 @@ impl Memory {
         None
     }
 
-    fn create(&mut self, i: ast::Identifier, v: Value) -> Option<Value> {
+    fn create(&mut self, i: ast::Identifier, v: D) -> Option<D> {
         self.scopes.last_mut().and_then(|l| l.insert(i, v))
     }
 
-    fn update(&mut self, i: &ast::Identifier, v: Value) -> Option<Value> {
+    fn update(&mut self, i: &ast::Identifier, v: D) -> Option<D> {
         self.get_mut(i).map(|va| replace(va, v))
     }
 
@@ -70,9 +70,9 @@ impl Memory {
     }
 }
 
-impl FromIterator<(ast::Identifier, Value)> for Memory {
-    fn from_iter<I>(iter: I) -> Memory
-        where I: IntoIterator<Item=(ast::Identifier, Value)>
+impl<D> FromIterator<(ast::Identifier, D)> for Memory<D> {
+    fn from_iter<I>(iter: I) -> Memory<D>
+        where I: IntoIterator<Item=(ast::Identifier, D)>
     {
         let mut mem = Memory::new();
         mem.scopes.push(iter.into_iter().collect());
@@ -96,7 +96,7 @@ pub fn interpret(ast: Ast, interner: &Interner) -> Value {
     interpret_scope(&ast.expressions, &mut memory, interner)
 }
 
-fn interpret_scope(expressions: &[Expression], memory: &mut Memory, interner: &Interner) -> Value {
+fn interpret_scope(expressions: &[Expression], memory: &mut Memory<Value>, interner: &Interner) -> Value {
     memory.scope(|memory| {
         let mut value = Tup(vec![]);
         for e in expressions {
@@ -135,6 +135,7 @@ fn type_matches(val: &Value, ty: &Type, interner: &Interner) -> bool {
         } else {
             false
         },
+        // TODO: Typecheck functions
         Fun(_, _, _) => if let Type::Function(_, _) = *ty {
             true
         } else {
@@ -143,7 +144,7 @@ fn type_matches(val: &Value, ty: &Type, interner: &Interner) -> bool {
     }
 }
 
-fn find_free_variables<'a, I>(free: &mut HashSet<ast::Identifier>, closed: &mut Memory, exprs: I)
+fn find_free_variables<'a, I>(free: &mut HashSet<ast::Identifier>, closed: &mut Memory<()>, exprs: I)
     where I: IntoIterator<Item=&'a Expression>,
 {
     for e in exprs {
@@ -178,12 +179,12 @@ fn find_free_variables<'a, I>(free: &mut HashSet<ast::Identifier>, closed: &mut 
                 if let Some(ref e) = *value {
                     find_free_variables(free, closed, once(&**e));
                 }
-                closed.create(*identifier, Invalid);
+                closed.create(*identifier, ());
             },
             Function { ref params, ref expressions, } => {
                 closed.scope(|closed| {
                     for p in params {
-                        closed.create(*p, Invalid);
+                        closed.create(*p, ());
                     }
                     find_free_variables(free, closed, expressions);
                 });
@@ -207,13 +208,13 @@ fn find_free_variables<'a, I>(free: &mut HashSet<ast::Identifier>, closed: &mut 
     }
 }
 
-fn execute(e: &Expression, memory: &mut Memory, interner: &Interner) -> Value {
+fn execute(e: &Expression, memory: &mut Memory<Value>, interner: &Interner) -> Value {
     match *e {
         Scope { ref expressions } => interpret_scope(expressions, memory, interner),
         Function { ref params, ref expressions } => Memory::new().scope(|mut closed| {
             let mut free = HashSet::new();
             for p in params.iter() {
-                closed.create(*p, Invalid);
+                closed.create(*p, ());
             }
             find_free_variables(&mut free, &mut closed, expressions);
             let closed_over = free.iter()
@@ -308,10 +309,8 @@ fn execute(e: &Expression, memory: &mut Memory, interner: &Interner) -> Value {
                 match memory.update(name, Invalid).expect("Function should exists") {
                     Fun(params, exprs, closed) => {
                         let mut memory = params.into_iter()
-                            .zip(
-                                parameters.iter()
-                                    .map(|e| execute(e, memory, interner))
-                            )
+                            .zip(parameters.iter()
+                                    .map(|e| execute(e, memory, interner)))
                             .chain(closed.into_iter())
                             .collect();
                         interpret_scope(&exprs[..], &mut memory, interner)
