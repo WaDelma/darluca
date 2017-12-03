@@ -107,26 +107,26 @@ named!(literal(Tks) -> Expression,
 
 named!(ty_union(Tks) -> Type,
     do_parse!(
-        tag_token!(Parenthesis(Open)) >>
+        tag_token!(Square(Open)) >>
         tys: separated_list!(
             tag_token!(Bar),
             ty
         ) >>
         tag_token!(Bar) >>
-        tag_token!(Parenthesis(Close)) >>
+        tag_token!(Square(Close)) >>
         (Type::Union(tys))
     )
 );
 
 named!(ty_tuple(Tks) -> Type,
     do_parse!(
-        tag_token!(Parenthesis(Open)) >>
+        tag_token!(Square(Open)) >>
         tys: separated_list!(
             tag_token!(Comma),
             ty
         ) >>
         tag_token!(Comma) >>
-        tag_token!(Parenthesis(Close)) >>
+        tag_token!(Square(Close)) >>
         (Type::Tuple(tys))
     )
 );
@@ -209,13 +209,13 @@ named!(operation(Tks) -> Expression,
 named!(tuple(Tks) -> Expression,
     map!(
         do_parse!(
-            tag_token!(Parenthesis(Open)) >>
+            tag_token!(Square(Open)) >>
             expressions: separated_list!(
                 tag_token!(Comma),
                 expression
             ) >>
-            opt!(tag_token!(Comma)) >>
-            tag_token!(Parenthesis(Close)) >>
+            tag_token!(Comma) >>
+            tag_token!(Square(Close)) >>
             (expressions)
         ),
         |value| {
@@ -229,17 +229,17 @@ named!(tuple(Tks) -> Expression,
 named!(union(Tks) -> Expression,
     alt!(
         do_parse!(
-            tag_token!(Parenthesis(Open)) >>
+            tag_token!(Square(Open)) >>
             tag_token!(Bar) >>
-            tag_token!(Parenthesis(Close)) >>
+            tag_token!(Square(Close)) >>
             (Expression::Union(None))
         ) |
         map!(
             do_parse!(
-                tag_token!(Parenthesis(Open)) >>
+                tag_token!(Square(Open)) >>
                 before: opt!(
                     terminated!(
-                        separated_list!(
+                        separated_nonempty_list!(
                             tag_token!(Bar),
                             tag_token!(Placeholder)
                         ),
@@ -250,14 +250,14 @@ named!(union(Tks) -> Expression,
                 after: opt!(
                     preceded!(
                         tag_token!(Bar),
-                        separated_list!(
+                        separated_nonempty_list!(
                             tag_token!(Bar),
                             tag_token!(Placeholder)
                         )
                     )
                 ) >>
-                opt!(tag_token!(Bar)) >>
-                tag_token!(Parenthesis(Close)) >>
+                tag_token!(Bar) >>
+                tag_token!(Square(Close)) >>
                 (before, value, after)
             ),
             |(before, value, after)| {

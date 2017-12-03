@@ -62,23 +62,25 @@ fn tokenize_tuple() {
     let one = interner.intern("1").unwrap();
     let two = interner.intern("2").unwrap();
     assert_tokens!(interner {
-        (1, 2)
+        [1, 2,]
     }{
-        Punctuation(Parenthesis(Open))
+        Punctuation(Square(Open))
         Literal(Integer(one))
         Punctuation(Comma)
         Literal(Integer(two))
-        Punctuation(Parenthesis(Close))
+        Punctuation(Comma)
+        Punctuation(Square(Close))
     });
 }
 
 #[test]
 fn tokenize_initial() {
     assert_tokens!({
-        ()
+        [,]
     }{
-        Punctuation(Parenthesis(Open))
-        Punctuation(Parenthesis(Close))
+        Punctuation(Square(Open))
+        Punctuation(Comma)
+        Punctuation(Square(Close))
     });
 }
 
@@ -89,13 +91,14 @@ fn tokenize_index_tuple() {
     let one = interner.intern("1").unwrap();
     let two = interner.intern("2").unwrap();
     assert_tokens!(interner {
-        (1, 2)[0]
+        [1, 2,][0]
     }{
-        Punctuation(Parenthesis(Open))
+        Punctuation(Square(Open))
         Literal(Integer(one))
         Punctuation(Comma)
         Literal(Integer(two))
-        Punctuation(Parenthesis(Close))
+        Punctuation(Comma)
+        Punctuation(Square(Close))
         Punctuation(Square(Open))
         Literal(Integer(zero))
         Punctuation(Square(Close))
@@ -107,24 +110,25 @@ fn tokenize_union() {
     let mut interner = Interner::new();
     let one = interner.intern("1").unwrap();
     assert_tokens!(interner {
-        (1|_)
+        [1|_|]
     }{
-        Punctuation(Parenthesis(Open))
+        Punctuation(Square(Open))
         Literal(Integer(one))
         Punctuation(Bar)
         Punctuation(Placeholder)
-        Punctuation(Parenthesis(Close))
+        Punctuation(Bar)
+        Punctuation(Square(Close))
     });
 }
 
 #[test]
 fn tokenize_terminal() {
     assert_tokens!({
-        (|)
+        [|]
     }{
-        Punctuation(Parenthesis(Open))
+        Punctuation(Square(Open))
         Punctuation(Bar)
-        Punctuation(Parenthesis(Close))
+        Punctuation(Square(Close))
     });
 }
 

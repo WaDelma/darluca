@@ -94,39 +94,31 @@ fn type_matches(val: &Value, ty: &Type, interner: &Interner) -> bool {
     use self::Value::*;
     match *val {
         Invalid => panic!("Invalid value"),
-        Tup(ref v) => {
-            if let Type::Tuple(ref t) = *ty {
-                v.iter().zip(t.iter())
-                    .all(|(v, t)| type_matches(v, t, interner))
-            } else {
-                false
-            }
+        Tup(ref v) => if let Type::Tuple(ref t) = *ty {
+            v.iter().zip(t.iter())
+                .all(|(v, t)| type_matches(v, t, interner))
+        } else {
+            false
         },
-        Uni(ref index, ref v, ref size) => {
-            if let Type::Union(ref t) = *ty {
-                if t.len() == *size {
-                    type_matches(&v, &t[*index], interner)
-                } else {
-                    false
-                }
+        Uni(ref index, ref v, ref size) => if let Type::Union(ref t) = *ty {
+            if t.len() == *size {
+                type_matches(&v, &t[*index], interner)
             } else {
                 false
             }
+        } else {
+            false
         },
-        Int(_) => {
-            if let Type::Named(ref n) = *ty {
-                "I32" == interner.resolve(*n).unwrap()
-            } else {
-                false
-            }
-        }
-        Bool(_) => {
-            if let Type::Named(ref n) = *ty {
-                "Bool" == interner.resolve(*n).unwrap()
-            } else {
-                false
-            }
-        }
+        Int(_) => if let Type::Named(ref n) = *ty {
+            "I32" == interner.resolve(*n).unwrap()
+        } else {
+            false
+        },
+        Bool(_) => if let Type::Named(ref n) = *ty {
+            "Bool" == interner.resolve(*n).unwrap()
+        } else {
+            false
+        },
     }
 }
 
