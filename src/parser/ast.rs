@@ -15,9 +15,9 @@ pub enum Expression {
         ty: Option<Type>,
         value: Option<Box<Expression>>,
     },
-    FunctionCall {
-        name: Identifier,
-        parameters: Vec<Expression>,
+    Function {
+        params: Vec<Identifier>,
+        expressions: Vec<Expression>,
     },
     If {
         condition: Box<Expression>,
@@ -45,6 +45,10 @@ pub enum Operation {
     Indexing {
         target: Identifier,
         index: Box<Expression>,
+    },
+    Calling {
+        name: Identifier,
+        parameters: Vec<Expression>,
     }
 }
 
@@ -62,7 +66,8 @@ pub struct Identifier(pub Symbol);
 pub enum Type {
     Named(Symbol),
     Tuple(Vec<Type>),
-    Union(Vec<Type>)
+    Union(Vec<Type>),
+    Function(Box<Type>, Box<Type>)
 }
 
 #[derive(Debug, PartialEq, Eq)]

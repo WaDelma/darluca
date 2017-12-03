@@ -5,6 +5,7 @@ use lexer::tokens::Punctuation::*;
 use lexer::tokens::Reserved::*;
 use lexer::tokens::Balanced::*;
 use lexer::tokens::Operator::*;
+use lexer::tokens::Direction::*;
 use self::ast::*;
 
 pub mod ast;
@@ -131,8 +132,20 @@ named!(ty_tuple(Tks) -> Type,
     )
 );
 
+named!(ty_function(Tks) -> Type,
+    do_parse!(
+        tag_token!(Parenthesis(Open)) >>
+        param: ty >>
+        tag_token!(Arrow(Right)) >>
+        result: ty >>
+        tag_token!(Parenthesis(Close)) >>
+        (Type::Function(Box::new(param), Box::new(result)))
+    )
+);
+
 named!(ty(Tks) -> Type,
     alt!(
+        ty_function |
         ty_union |
         ty_tuple |
         ty_identifier!()
@@ -343,8 +356,37 @@ named!(declaration(Tks) -> Expression,
     )
 );
 
+named!(function(Tks) -> Expression,
+    map!(
+        do_parse!(
+            tag_token!(Square(Open)) >>
+            params: separated_list!(
+                tag_token!(Comma),
+                identifier!()
+            ) >>
+            tag_token!(Comma) >>
+            tag_token!(Square(Close)) >>
+            tag_token!(Arrow(Right)) >>
+            scope: scope >>
+            (params, scope)
+        ),
+        |(params, scope)| {
+            if let Expression::Scope { expressions } = scope {
+                Expression::Function {
+                    params,
+                    expressions,
+                }
+            } else {
+                // TODO: If enum variants will become types...
+                unreachable!("Parsing scope should yield scope");
+            }
+        }
+    )
+);
+
 named!(expression(Tks) -> Expression,
     alt_complete!(
+        function |
         scope |
         branch |
         tuple |

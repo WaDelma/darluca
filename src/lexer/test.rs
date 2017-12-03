@@ -10,6 +10,7 @@ use super::tokens::Balanced::*;
 use super::tokens::Operator::*;
 use super::tokens::Reserved::*;
 use super::tokens::Literal::*;
+use super::tokens::Direction::*;
 
 macro_rules! assert_tokens {
     ($interner:ident {
@@ -179,6 +180,37 @@ fn tokenize_if_else() {
         Punctuation(Curly(Close))
         Reserved(Else)
         Punctuation(Curly(Open))
+        Punctuation(Curly(Close))
+    });
+}
+
+#[test]
+fn tokenize_function_declaration() {
+    let mut interner = Interner::new();
+    let fun = interner.intern("fun").unwrap();
+    let int = interner.intern("I32").unwrap();
+    let x = interner.intern("x").unwrap();
+    assert_tokens!(interner {
+        let fun: (I32 -> I32) = [x,] -> {
+            x
+        }
+    }{
+        Reserved(Let)
+        Identifier(fun)
+        Punctuation(Colon)
+        Punctuation(Parenthesis(Open))
+        Type(int)
+        Punctuation(Arrow(Right))
+        Type(int)
+        Punctuation(Parenthesis(Close))
+        Operator(Assignment)
+        Punctuation(Square(Open))
+        Identifier(x)
+        Punctuation(Comma)
+        Punctuation(Square(Close))
+        Punctuation(Arrow(Right))
+        Punctuation(Curly(Open))
+        Identifier(x)
         Punctuation(Curly(Close))
     });
 }

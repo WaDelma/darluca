@@ -12,6 +12,7 @@ use self::tokens::Balanced::*;
 use self::tokens::Operator::*;
 use self::tokens::Reserved::*;
 use self::tokens::Literal::*;
+use self::tokens::Direction::*;
 
 pub mod tokens;
 #[cfg(test)]
@@ -111,6 +112,8 @@ impl<'ctx> Lexer<'ctx> {
             tag!(">") => {|_| Angle(Close)} |
             tag!("(") => {|_| Parenthesis(Open)} |
             tag!(")") => {|_| Parenthesis(Close)} |
+            tag!("->") => {|_| Arrow(Right)} |
+            tag!("<-") => {|_| Arrow(Left)} |
             tag!(";") => {|_| SemiColon} |
             tag!(":") => {|_| Colon} |
             tag!(",") => {|_| Comma} |

@@ -345,7 +345,10 @@ fn parse_addition() {
         (1 + 2)
     }{
         Operation(Addition {
-            parameters: vec![Literal(Integer(one)), Literal(Integer(two))],
+            parameters: vec![
+                    Literal(Integer(one)),
+                    Literal(Integer(two))
+                ],
         })
     })
 }
@@ -381,6 +384,29 @@ fn parse_if_else() {
             condition: Box::new(Literal(Boolean(true))),
             expressions: vec![Literal(Boolean(true))],
             elses: vec![Literal(Boolean(false))],
+        }
+    });
+}
+
+#[test]
+fn parse_function_declaration() {
+    let mut interner = Interner::new();
+    let fun = interner.intern("fun").unwrap();
+    let int = interner.intern("I32").unwrap();
+    let x = interner.intern("x").unwrap();
+    let y = interner.intern("y").unwrap();
+    assert_parse!(interner {
+        let fun: (I32 -> I32) = [x,] -> {
+            x
+        }
+    }{
+        Declaration {
+            identifier: Identifier(fun),
+            value: Some(Box::new(Function {
+                params: vec![Identifier(x)],
+                expressions: vec![Expression::Identifier(Identifier(x))],
+            })),
+            ty: Some(Type::Function(Box::new(Type::Named(int)), Box::new(Type::Named(int)))),
         }
     });
 }

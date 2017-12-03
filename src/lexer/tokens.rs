@@ -42,11 +42,18 @@ pub enum Punctuation {
     Parenthesis(Balanced),
     Square(Balanced),
     Angle(Balanced),
+    Arrow(Direction),
     Placeholder,
     SemiColon,
     Colon,
     Comma,
     Bar,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum Direction {
+    Left,
+    Right
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

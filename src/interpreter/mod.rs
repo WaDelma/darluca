@@ -207,7 +207,8 @@ fn execute(e: &Expression, memory: &mut Memory, interner: &Interner) -> Value {
                     }
                     _ => panic!("Cannot index"),
                 }
-            }
+            },
+            _ => unimplemented!(),
         },
         _ => unimplemented!(),
     }
