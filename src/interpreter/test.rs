@@ -280,3 +280,26 @@ fn interpret_closure() {
         x => Invalid
     });
 }
+
+
+#[test]
+fn interpret_closure_closure() {
+    assert_parse!({
+        let fun: ([I32,] -> I32) = {
+            let x: I32 = 1
+            [y,] -> {
+                let z = [,] -> {
+                    let x: [I32, I32,] = [2, y,]
+                    (x[1] + x[0])
+                }
+                (z[,] + x)
+            }
+        }
+        let y = fun[3,]
+    }{
+        fun => Invalid
+        y => Int(6)
+    }{
+        x => Invalid
+    });
+}

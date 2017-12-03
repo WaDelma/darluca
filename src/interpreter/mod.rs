@@ -1,84 +1,21 @@
 use symtern::prelude::*;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::mem::replace;
-use std::iter::{once, FromIterator};
+use std::iter::once;
 
 use parser::ast::{self, Ast, Expression, Type};
 use parser::ast::Expression::*;
 use parser::ast::Literal::*;
 use parser::ast::Operation::*;
-use interner::{Interner, Symbol};
+use interner::Interner;
 
 use self::Value::*;
+use self::mem::Memory;
 
 #[cfg(test)]
 mod test;
-
-struct Memory<D> {
-    scopes: Vec<HashMap<ast::Identifier, D>>,
-    #[cfg(test)]
-    used_scopes: Vec<HashMap<ast::Identifier, D>>,
-}
-
-impl<D> Memory<D> {
-    fn new() -> Self {
-        Memory {
-            scopes: vec![],
-            #[cfg(test)]
-            used_scopes: vec![],
-        }
-    }
-
-    fn get(&self, i: &ast::Identifier) -> Option<&D> {
-        for scope in self.scopes.iter().rev() {
-            if let r @ Some(_) = scope.get(i) {
-                return r;
-            }
-        }
-        None
-    }
-
-    fn get_mut(&mut self, i: &ast::Identifier) -> Option<&mut D> {
-        for scope in self.scopes.iter_mut().rev() {
-            if let r @ Some(_) = scope.get_mut(i) {
-                return r;
-            }
-        }
-        None
-    }
-
-    fn create(&mut self, i: ast::Identifier, v: D) -> Option<D> {
-        self.scopes.last_mut().and_then(|l| l.insert(i, v))
-    }
-
-    fn update(&mut self, i: &ast::Identifier, v: D) -> Option<D> {
-        self.get_mut(i).map(|va| replace(va, v))
-    }
-
-    fn scope<F, T>(&mut self, f: F) -> T
-        where F: FnOnce(&mut Self) -> T
-    {
-        self.scopes.push(HashMap::new());
-        let result = f(self);
-        let _used_scope = self.scopes.pop();
-        #[cfg(test)]
-        self.used_scopes.push(
-            _used_scope.expect("We pushed scope so this should be always valid.")
-        );
-        result
-    }
-}
-
-impl<D> FromIterator<(ast::Identifier, D)> for Memory<D> {
-    fn from_iter<I>(iter: I) -> Memory<D>
-        where I: IntoIterator<Item=(ast::Identifier, D)>
-    {
-        let mut mem = Memory::new();
-        mem.scopes.push(iter.into_iter().collect());
-        mem
-    }
-}
+mod mem;
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Value {
@@ -90,10 +27,8 @@ pub enum Value {
     Fun(Vec<ast::Identifier>, Vec<Expression>, Vec<(ast::Identifier, Value)>),
 }
 
-
 pub fn interpret(ast: Ast, interner: &Interner) -> Value {
-    let mut memory = Memory::new();
-    interpret_scope(&ast.expressions, &mut memory, interner)
+    interpret_scope(&ast.expressions, &mut Memory::new(), interner)
 }
 
 fn interpret_scope(expressions: &[Expression], memory: &mut Memory<Value>, interner: &Interner) -> Value {
@@ -104,108 +39,6 @@ fn interpret_scope(expressions: &[Expression], memory: &mut Memory<Value>, inter
         }
         value
     })
-}
-
-fn type_matches(val: &Value, ty: &Type, interner: &Interner) -> bool {
-    use self::Value::*;
-    match *val {
-        Invalid => panic!("Invalid value"),
-        Tup(ref v) => if let Type::Tuple(ref t) = *ty {
-            v.iter().zip(t.iter())
-                .all(|(v, t)| type_matches(v, t, interner))
-        } else {
-            false
-        },
-        Uni(ref index, ref v, ref size) => if let Type::Union(ref t) = *ty {
-            if t.len() == *size {
-                type_matches(&v, &t[*index], interner)
-            } else {
-                false
-            }
-        } else {
-            false
-        },
-        Int(_) => if let Type::Named(ref n) = *ty {
-            "I32" == interner.resolve(*n).unwrap()
-        } else {
-            false
-        },
-        Bool(_) => if let Type::Named(ref n) = *ty {
-            "Bool" == interner.resolve(*n).unwrap()
-        } else {
-            false
-        },
-        // TODO: Typecheck functions
-        Fun(_, _, _) => if let Type::Function(_, _) = *ty {
-            true
-        } else {
-            false
-        },
-    }
-}
-
-fn find_free_variables<'a, I>(free: &mut HashSet<ast::Identifier>, closed: &mut Memory<()>, exprs: I)
-    where I: IntoIterator<Item=&'a Expression>,
-{
-    for e in exprs {
-        match *e {
-            Identifier(ref i) => if closed.get(i).is_none() {
-                free.insert(*i);
-            },
-            Operation(ref op) => match *op {
-                Assignment { ref identifier, ref value, } => {
-                    if closed.get(identifier).is_none() {
-                        free.insert(*identifier);
-                    }
-                    find_free_variables(free, closed, once(&**value));
-                },
-                Addition { ref parameters, } => {
-                    find_free_variables(free, closed, &parameters[..]);
-                },
-                Indexing { ref target, ref index, } => {
-                    if closed.get(target).is_none() {
-                        free.insert(*target);
-                    }
-                    find_free_variables(free, closed, once(&**index));
-                },
-                Calling { ref name, ref parameters, } => {
-                    if closed.get(name).is_none() {
-                        free.insert(*name);
-                    }
-                    find_free_variables(free, closed, &parameters[..]);
-                },
-            },
-            Declaration { ref identifier, ref value, ..} => {
-                if let Some(ref e) = *value {
-                    find_free_variables(free, closed, once(&**e));
-                }
-                closed.create(*identifier, ());
-            },
-            Function { ref params, ref expressions, } => {
-                closed.scope(|closed| {
-                    for p in params {
-                        closed.create(*p, ());
-                    }
-                    find_free_variables(free, closed, expressions);
-                });
-            },
-            If { ref condition, ref expressions, ref elses, } => {
-                find_free_variables(free, closed, once(&**condition));
-                closed.scope(|closed|
-                    find_free_variables(free, closed, &expressions[..]));
-                closed.scope(|closed|
-                    find_free_variables(free, closed, &elses[..]));
-            },
-            Tuple { ref value, } =>
-                find_free_variables(free, closed, &value[..]),
-            Union(Some(ref u)) =>
-                find_free_variables(free, closed, once(&*u.value)),
-            Scope { ref expressions, } =>
-                closed.scope(|closed|
-                    find_free_variables(free, closed, expressions)),
-            _ => {}
-        }
-    }
 }
 
 fn execute(e: &Expression, memory: &mut Memory<Value>, interner: &Interner) -> Value {
@@ -286,7 +119,7 @@ fn execute(e: &Expression, memory: &mut Memory<Value>, interner: &Interner) -> V
                         if let Int(b) = execute(b, memory, interner) {
                             a + b
                         } else {
-                            panic!("Cannot add");
+                            panic!("Cannot add: {:?} + {:?}", a, b);
                         }
                     )
             ),
@@ -321,5 +154,105 @@ fn execute(e: &Expression, memory: &mut Memory<Value>, interner: &Interner) -> V
             _ => unimplemented!(),
         },
         _ => unimplemented!(),
+    }
+}
+
+fn type_matches(val: &Value, ty: &Type, interner: &Interner) -> bool {
+    use self::Value::*;
+    match *val {
+        Invalid => panic!("Invalid value"),
+        Tup(ref v) => if let Type::Tuple(ref t) = *ty {
+            v.iter().zip(t.iter())
+                .all(|(v, t)| type_matches(v, t, interner))
+        } else {
+            false
+        },
+        Uni(ref index, ref v, ref size) => if let Type::Union(ref t) = *ty {
+            if t.len() == *size {
+                type_matches(&v, &t[*index], interner)
+            } else {
+                false
+            }
+        } else {
+            false
+        },
+        Int(_) => if let Type::Named(ref n) = *ty {
+            "I32" == interner.resolve(*n).unwrap()
+        } else {
+            false
+        },
+        Bool(_) => if let Type::Named(ref n) = *ty {
+            "Bool" == interner.resolve(*n).unwrap()
+        } else {
+            false
+        },
+        // TODO: Typecheck functions
+        Fun(_, _, _) => if let Type::Function(_, _) = *ty {
+            true
+        } else {
+            false
+        },
+    }
+}
+
+fn add_not_closed(free: &mut HashSet<ast::Identifier>, closed: &Memory<()>, identifier: &ast::Identifier) {
+    if closed.get(identifier).is_none() {
+        free.insert(*identifier);
+    }
+}
+
+fn find_free_variables<'a, I>(free: &mut HashSet<ast::Identifier>, closed: &mut Memory<()>, exprs: I)
+    where I: IntoIterator<Item=&'a Expression>,
+{
+    for e in exprs {
+        match *e {
+            Identifier(ref i) => add_not_closed(free, &*closed, i),
+            Operation(ref op) => match *op {
+                Assignment { ref identifier, ref value, } => {
+                    add_not_closed(free, &*closed, identifier);
+                    find_free_variables(free, closed, once(&**value));
+                },
+                Addition { ref parameters, } => {
+                    find_free_variables(free, closed, &parameters[..]);
+                },
+                Indexing { ref target, ref index, } => {
+                    add_not_closed(free, &*closed, target);
+                    find_free_variables(free, closed, once(&**index));
+                },
+                Calling { ref name, ref parameters, } => {
+                    add_not_closed(free, &*closed, name);
+                    find_free_variables(free, closed, &parameters[..]);
+                },
+            },
+            Declaration { ref identifier, ref value, ..} => {
+                if let Some(ref e) = *value {
+                    find_free_variables(free, closed, once(&**e));
+                }
+                closed.create(*identifier, ());
+            },
+            Function { ref params, ref expressions, } => {
+                closed.scope(|closed| {
+                    for p in params {
+                        closed.create(*p, ());
+                    }
+                    find_free_variables(free, closed, expressions);
+                });
+            },
+            If { ref condition, ref expressions, ref elses, } => {
+                find_free_variables(free, closed, once(&**condition));
+                closed.scope(|closed|
+                    find_free_variables(free, closed, &expressions[..]));
+                closed.scope(|closed|
+                    find_free_variables(free, closed, &elses[..]));
+            },
+            Tuple { ref value, } =>
+                find_free_variables(free, closed, &value[..]),
+            Union(Some(ref u)) =>
+                find_free_variables(free, closed, once(&*u.value)),
+            Scope { ref expressions, } =>
+                closed.scope(|closed|
+                    find_free_variables(free, closed, expressions)),
+            _ => {}
+        }
     }
 }
