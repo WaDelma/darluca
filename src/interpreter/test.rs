@@ -238,6 +238,21 @@ fn interpret_else() {
 }
 
 #[test]
+fn interpret_else_if() {
+    assert_parse!({
+        let x: I32 = if false {
+            1
+        } else if false {
+            2
+        } else {
+            3
+        }
+    }{
+        x => Int(3)
+    });
+}
+
+#[test]
 fn intepret_moving_into_scope() {
     assert_parse!({
         let x: I32 = 1

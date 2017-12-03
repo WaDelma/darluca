@@ -1,6 +1,6 @@
-use nom::{IResult, ErrorKind, Needed, Err};
+use nom::{IResult, ErrorKind, Needed};
 
-use lexer::tokens::{self, Token, Tokens, Tks, Punctuation, Operator, Reserved};
+use lexer::tokens::{self, Token, Tks};
 use lexer::tokens::Punctuation::*;
 use lexer::tokens::Reserved::*;
 use lexer::tokens::Balanced::*;
@@ -325,8 +325,7 @@ named!(scope(Tks) -> Expression,
     )
 );
 
-// TODO: if ... else if
-named!(branch(Tks) -> Expression,
+named!(branch(Tks) -> ast::If,
     map!(
         do_parse!(
             tag_token!(If) >>
@@ -334,20 +333,27 @@ named!(branch(Tks) -> Expression,
             tag_token!(Curly(Open)) >>
             expressions: many0!(expression) >>
             tag_token!(Curly(Close)) >>
-            elses: opt!(do_parse!(
-                tag_token!(Else) >>
-                tag_token!(Curly(Open)) >>
-                elses: many0!(expression) >>
-                tag_token!(Curly(Close)) >>
-                (elses)
-            )) >>
-            (Box::new(condition), expressions, elses.unwrap_or(vec![]))
+            otherwise: opt!(
+                preceded!(
+                    tag_token!(Else),
+                    alt!(
+                        branch |
+                        do_parse!(
+                            tag_token!(Curly(Open)) >>
+                            elses: many0!(expression) >>
+                            tag_token!(Curly(Close)) >>
+                            (ast::If::Else(elses))
+                        )
+                    )
+                )
+            ) >>
+            (Box::new(condition), expressions, Box::new(otherwise.unwrap_or(ast::If::Else(vec![]))))
         ),
-        |(condition, expressions, elses)| {
-            Expression::If {
+        |(condition, expressions, otherwise)| {
+            ast::If::Condition {
                 condition,
                 expressions,
-                elses,
+                otherwise,
             }
         }
     )
@@ -413,7 +419,7 @@ named!(expression(Tks) -> Expression,
         operation |
         function |
         scope |
-        branch |
+        branch => {Expression::If} |
         tuple |
         union |
         declaration |

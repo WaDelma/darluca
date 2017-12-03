@@ -1,4 +1,4 @@
-use interner::{Interner, Symbol};
+use interner::Symbol;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Ast {
@@ -10,6 +10,7 @@ pub enum Expression {
     Literal(Literal),
     Identifier(Identifier),
     Operation(Operation),
+    If(If),
     Declaration {
         identifier: Identifier,
         ty: Option<Type>,
@@ -19,11 +20,6 @@ pub enum Expression {
         params: Vec<Identifier>,
         expressions: Vec<Expression>,
     },
-    If {
-        condition: Box<Expression>,
-        expressions: Vec<Expression>,
-        elses: Vec<Expression>,
-    },
     Tuple {
         value: Vec<Expression>,
     },
@@ -31,6 +27,16 @@ pub enum Expression {
     Scope {
         expressions: Vec<Expression>,
     },
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+pub enum If {
+    Condition {
+        condition: Box<Expression>,
+        expressions: Vec<Expression>,
+        otherwise: Box<If>,
+    },
+    Else(Vec<Expression>),
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]

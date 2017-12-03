@@ -7,6 +7,7 @@ use super::ast::{self, Ast, Expression, Identifier, Type, Literal, Operation};
 use super::ast::Expression::*;
 use super::ast::Literal::*;
 use super::ast::Operation::*;
+use super::ast::If::*;
 
 macro_rules! assert_parse {
     ($interner:ident {
@@ -379,11 +380,11 @@ fn parse_if_else() {
             false
         }
     }{
-        If {
+        If(Condition {
             condition: Box::new(Literal(Boolean(true))),
             expressions: vec![Literal(Boolean(true))],
-            elses: vec![Literal(Boolean(false))],
-        }
+            otherwise: Box::new(Else(vec![Literal(Boolean(false))])),
+        })
     });
 }
 

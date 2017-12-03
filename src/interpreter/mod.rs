@@ -8,6 +8,7 @@ use parser::ast::{self, Ast, Expression, Type};
 use parser::ast::Expression::*;
 use parser::ast::Literal::*;
 use parser::ast::Operation::*;
+use parser::ast::If::*;
 use interner::Interner;
 
 use self::Value::*;
@@ -95,16 +96,13 @@ fn execute(e: &Expression, memory: &mut Memory<Value>, interner: &Interner) -> V
         } else {
             Uni(0, Box::new(Invalid), 0)
         },
-        If { ref condition, ref expressions, ref elses } => {
-            let condition = match execute(condition, memory, interner) {
-                Bool(b) => b,
-                _ => panic!("Invalid condition."),
-            };
-            interpret_scope(if condition {
-                expressions
-            } else {
-                elses
-            }, memory, interner)
+        If(ref branch) => {
+            match *branch {
+                Condition { ref condition, ref expressions, ref otherwise } => {
+                    execute_if(condition, expressions, otherwise, memory, interner)
+                }
+                _ => panic!("else without if."),
+            }
         },
         Operation(ref o) => match *o {
             Assignment { ref identifier, ref value } => {
@@ -154,6 +152,25 @@ fn execute(e: &Expression, memory: &mut Memory<Value>, interner: &Interner) -> V
             _ => unimplemented!(),
         },
         _ => unimplemented!(),
+    }
+}
+
+fn execute_if(condition: &Expression, expressions: &[Expression], otherwise: &ast::If, memory: &mut Memory<Value>, interner: &Interner) -> Value {
+    let condition = match execute(condition, memory, interner) {
+        Bool(b) => b,
+        _ => panic!("Invalid condition."),
+    };
+    if condition {
+        interpret_scope(expressions, memory, interner)
+    } else {
+        match *otherwise {
+            Condition { ref condition, ref expressions, ref otherwise } => {
+                execute_if(condition, expressions, otherwise, memory, interner)
+            },
+            Else(ref otherwise) => {
+                interpret_scope(otherwise, memory, interner)
+            },
+        }
     }
 }
 
@@ -238,12 +255,12 @@ fn find_free_variables<'a, I>(free: &mut HashSet<ast::Identifier>, closed: &mut 
                     find_free_variables(free, closed, expressions);
                 });
             },
-            If { ref condition, ref expressions, ref elses, } => {
-                find_free_variables(free, closed, once(&**condition));
-                closed.scope(|closed|
-                    find_free_variables(free, closed, &expressions[..]));
-                closed.scope(|closed|
-                    find_free_variables(free, closed, &elses[..]));
+            If(ref branch) => {
+                match *branch {
+                    Condition { ref condition, ref expressions, ref otherwise } =>
+                        find_free_variables_if(&**condition, expressions, otherwise, free, closed),
+                    _ => panic!("else without if."),
+                }
             },
             Tuple { ref value, } =>
                 find_free_variables(free, closed, &value[..]),
@@ -254,5 +271,20 @@ fn find_free_variables<'a, I>(free: &mut HashSet<ast::Identifier>, closed: &mut 
                     find_free_variables(free, closed, expressions)),
             _ => {}
         }
+    }
+}
+
+fn find_free_variables_if(condition: &Expression, expressions: &[Expression], otherwise: &ast::If, free: &mut HashSet<ast::Identifier>, closed: &mut Memory<()>) {
+    find_free_variables(free, closed, once(condition));
+    closed.scope(|closed|
+        find_free_variables(free, closed, &expressions[..]));
+    match *otherwise {
+        Condition { ref condition, ref expressions, ref otherwise } => {
+            find_free_variables_if(condition, expressions, otherwise, free, closed);
+        },
+        Else(ref otherwise) => {
+            closed.scope(|closed|
+                find_free_variables(free, closed, &otherwise[..]));
+        },
     }
 }
