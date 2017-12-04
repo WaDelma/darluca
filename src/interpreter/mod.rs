@@ -1,8 +1,11 @@
 use symtern::prelude::*;
 
+use itertools::Itertools;
+
 use std::collections::HashSet;
 use std::mem::replace;
 use std::iter::once;
+use std::fmt;
 
 use parser::ast::{self, Ast, Expression, Type};
 use parser::ast::Expression::*;
@@ -12,11 +15,30 @@ use parser::ast::If::*;
 use interner::Interner;
 
 use self::Value::*;
+use self::InterpreterError::*;
 use self::mem::Memory;
 
 #[cfg(test)]
 mod test;
 mod mem;
+
+type Result<T> = ::std::result::Result<T, InterpreterError>;
+
+#[derive(Debug, Fail, PartialEq)]
+pub enum InterpreterError {
+    #[fail(display = "Cannot assign non-existent variable {} with value {}", _0, _1)]
+    NonExistentAssign(String, String),
+    #[fail(display = "Unknown variable: {}", _0)]
+    UnknownVariable(String),
+    #[fail(display = "ICE: Interning failed: {:?}", _0)]
+    InternFailure(#[cause] ::symtern::Error)
+}
+
+impl From<::symtern::Error> for InterpreterError {
+    fn from(e: ::symtern::Error) -> Self {
+        InternFailure(e)
+    }
+}
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Value {
@@ -28,23 +50,58 @@ pub enum Value {
     Fun(Vec<ast::Identifier>, Vec<Expression>, Vec<(ast::Identifier, Value)>),
 }
 
-pub fn interpret(ast: Ast, interner: &Interner) -> Value {
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Invalid => f.write_str("Invalid"),
+            Tup(ref v) => {
+                f.write_str("[")?;
+                f.write_str(
+                    &v.iter()
+                        .map(|v| format!("{}", v))
+                        .join(", ")
+                )?;
+                f.write_str(",]")
+            },
+            Uni(ref index, ref val, ref size) => {
+                f.write_str("[")?;
+                for _ in 0..*index {
+                    f.write_str("_|")?;
+                }
+                f.write_str(&format!("{}", val))?;
+                f.write_str("|")?;
+                for _ in (index + 1)..*size {
+                    f.write_str("_|")?;
+                }
+                f.write_str("]")
+            },
+            Int(ref i) => f.write_str(&format!("{}", i)),
+            Bool(ref b) => f.write_str(&format!("{}", b)),
+            Fun(ref params, ref exprs, ref closed) => {
+                // TODO: Proper function formating
+                f.write_str("Function")
+            },
+        }
+    }
+}
+
+pub fn interpret(ast: Ast, interner: &Interner) -> Result<Value> {
     interpret_scope(&ast.expressions, &mut Memory::new(), interner)
 }
 
-fn interpret_scope(expressions: &[Expression], memory: &mut Memory<Value>, interner: &Interner) -> Value {
+fn interpret_scope(expressions: &[Expression], memory: &mut Memory<Value>, interner: &Interner) -> Result<Value> {
     memory.scope(|memory| {
         let mut value = Tup(vec![]);
         for e in expressions {
-            value = execute(e, memory, interner);
+            value = execute(e, memory, interner)?;
         }
-        value
+        Ok(value)
     })
 }
 
-fn execute(e: &Expression, memory: &mut Memory<Value>, interner: &Interner) -> Value {
-    match *e {
-        Scope { ref expressions } => interpret_scope(expressions, memory, interner),
+fn execute(e: &Expression, memory: &mut Memory<Value>, interner: &Interner) -> Result<Value> {
+    Ok(match *e {
+        Scope { ref expressions } => interpret_scope(expressions, memory, interner)?,
         Function { ref params, ref expressions } => Memory::new().scope(|mut closed| {
             let mut free = HashSet::new();
             for p in params.iter() {
@@ -64,7 +121,7 @@ fn execute(e: &Expression, memory: &mut Memory<Value>, interner: &Interner) -> V
             let value = value
                 .as_ref()
                 .map(|v| execute(&*v, memory, interner))
-                .unwrap_or(Invalid);
+                .unwrap_or(Ok(Invalid))?;
             if let Some(ref ty) = *ty {
                 if !type_matches(&value, ty, interner) {
                     panic!("Trying to assign wrong type of value. {:?} is not of type {:?}", value, ty);
@@ -83,15 +140,15 @@ fn execute(e: &Expression, memory: &mut Memory<Value>, interner: &Interner) -> V
             }
         },
         Identifier(ref i) => {
-            memory.update(i, Invalid).expect(&format!("No such variable: {:?} => {:?}", i.0, interner.resolve(i.0)))
+            memory.update(i, Invalid).ok_or(UnknownVariable(interner.resolve(i.0)?.into()))?
         },
         Tuple { ref value } => Tup(
             value.iter()
                 .map(|e| execute(e, memory, interner))
-                .collect()
+                .collect::<Result<_>>()?
         ),
         Union(ref u) => if let Some(ref u) = *u {
-            let value = execute(&*u.value, memory, interner);
+            let value = execute(&*u.value, memory, interner)?;
             Uni(u.position, Box::new(value), u.size)
         } else {
             Uni(0, Box::new(Invalid), 0)
@@ -99,30 +156,31 @@ fn execute(e: &Expression, memory: &mut Memory<Value>, interner: &Interner) -> V
         If(ref branch) => {
             match *branch {
                 Condition { ref condition, ref expressions, ref otherwise } => {
-                    execute_if(condition, expressions, otherwise, memory, interner)
+                    execute_if(condition, expressions, otherwise, memory, interner)?
                 }
                 _ => panic!("else without if."),
             }
         },
         Operation(ref o) => match *o {
             Assignment { ref identifier, ref value } => {
-                let value = execute(value, memory, interner);
-                let target = memory.get_mut(identifier)
-                    .expect("Invalid variable.");
+                let value = execute(value, memory, interner)?;
+                // TODO: Typecheck
+                let target = memory.get_mut(identifier).ok_or(NonExistentAssign(interner.resolve(identifier.0)?.into(), format!("{}", value)))?;
                 replace(target, value)
             },
             Addition { ref parameters } => Int(
                 parameters.iter()
-                    .fold(0, |a, b|
-                        if let Int(b) = execute(b, memory, interner) {
+                    .map(|e| execute(e, memory, interner))
+                    .fold_results(0, |a, b|
+                        if let Int(b) = b {
                             a + b
                         } else {
                             panic!("Cannot add: {:?} + {:?}", a, b);
                         }
-                    )
+                    )?
             ),
             Indexing { ref target, ref index, } => {
-                let index = execute(index, memory, interner);
+                let index = execute(index, memory, interner)?;
                 match *memory.get_mut(target).expect("Indexable should exists") {
                     Tup(ref mut value) => {
                         let index = match index {
@@ -141,10 +199,12 @@ fn execute(e: &Expression, memory: &mut Memory<Value>, interner: &Interner) -> V
                     Fun(params, exprs, closed) => {
                         let mut memory = params.into_iter()
                             .zip(parameters.iter()
-                                    .map(|e| execute(e, memory, interner)))
+                                .map(|e| execute(e, memory, interner))
+                                .collect::<Result<Vec<_>>>()?.into_iter()
+                            )
                             .chain(closed.into_iter())
                             .collect();
-                        interpret_scope(&exprs[..], &mut memory, interner)
+                        interpret_scope(&exprs[..], &mut memory, interner)?
                     }
                     _ => panic!("Cannot call"),
                 }
@@ -152,11 +212,11 @@ fn execute(e: &Expression, memory: &mut Memory<Value>, interner: &Interner) -> V
             _ => unimplemented!(),
         },
         _ => unimplemented!(),
-    }
+    })
 }
 
-fn execute_if(condition: &Expression, expressions: &[Expression], otherwise: &ast::If, memory: &mut Memory<Value>, interner: &Interner) -> Value {
-    let condition = match execute(condition, memory, interner) {
+fn execute_if(condition: &Expression, expressions: &[Expression], otherwise: &ast::If, memory: &mut Memory<Value>, interner: &Interner) -> Result<Value> {
+    let condition = match execute(condition, memory, interner)? {
         Bool(b) => b,
         _ => panic!("Invalid condition."),
     };

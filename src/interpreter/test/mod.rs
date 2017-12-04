@@ -3,6 +3,8 @@ use lexer::Lexer;
 
 use super::Value::*;
 
+mod error;
+
 macro_rules! assert_parse {
     ($interner:ident {
         $($code:tt)*
@@ -23,7 +25,7 @@ macro_rules! assert_parse {
             };
             let ast = ::parser::parse(tokens.borrow()).unwrap().1;
             let mut memory = Memory::new();
-            ::interpreter::interpret_scope(&ast.expressions, &mut memory, &$interner);
+            ::interpreter::interpret_scope(&ast.expressions, &mut memory, &$interner).unwrap();
             let mut n = 1;
             $(
                 let mut expected = HashMap::new();
@@ -44,7 +46,7 @@ macro_rules! assert_parse {
     };
     ($($tks:tt)*) => {
         {
-            let mut interner = Interner::new();
+            let mut interner = ::interner::Interner::new();
             assert_parse!(interner $($tks)*);
         }
     };
