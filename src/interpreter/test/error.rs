@@ -20,7 +20,7 @@ macro_rules! assert_error {
                 ).1.unwrap().1
             };
             let ast = ::parser::parse(tokens.borrow()).unwrap().1;
-            let error = ::interpreter::interpret(ast, &$interner).err().unwrap();
+            let error = ::interpreter::interpret(ast, &mut $interner).err().unwrap();
             let expected = $val;
             if error != expected {
                 panic!(
@@ -52,7 +52,7 @@ fn assigning_int_unknown_variable() {
     assert_error!({
         x = 1
     }{
-        NonExistentAssign("x".into(), "1".into())
+        NonExistentAssign("x".into(), "1".into(), "I32".into())
     });
 }
 
@@ -61,7 +61,7 @@ fn assigning_bool_unknown_variable() {
     assert_error!({
         x = true
     }{
-        NonExistentAssign("x".into(), "true".into())
+        NonExistentAssign("x".into(), "true".into(), "Bool".into())
     });
 }
 
@@ -70,7 +70,7 @@ fn assigning_tuple_unknown_variable() {
     assert_error!({
         x = [1, 2,]
     }{
-        NonExistentAssign("x".into(), "[1, 2,]".into())
+        NonExistentAssign("x".into(), "[1, 2,]".into(), "[I32, I32]".into())
     });
 }
 
@@ -79,6 +79,6 @@ fn assigning_union_unknown_variable() {
     assert_error!({
         x = [1|_|]
     }{
-        NonExistentAssign("x".into(), "[1|_|]".into())
+        NonExistentAssign("x".into(), "[1|_|]".into(), "[I32|?|]".into())
     });
 }

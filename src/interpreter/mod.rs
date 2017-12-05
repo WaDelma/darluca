@@ -1,10 +1,11 @@
 use symtern::prelude::*;
 
 use itertools::Itertools;
+use itertools::process_results;
 
 use std::collections::HashSet;
 use std::mem::replace;
-use std::iter::once;
+use std::iter::{once, repeat};
 use std::fmt;
 
 use parser::ast::{self, Ast, Expression, Type};
@@ -12,7 +13,7 @@ use parser::ast::Expression::*;
 use parser::ast::Literal::*;
 use parser::ast::Operation::*;
 use parser::ast::If::*;
-use interner::Interner;
+use interner::{Interner, Symbol};
 
 use self::Value::*;
 use self::InterpreterError::*;
@@ -26,10 +27,12 @@ type Result<T> = ::std::result::Result<T, InterpreterError>;
 
 #[derive(Debug, Fail, PartialEq)]
 pub enum InterpreterError {
-    #[fail(display = "Cannot assign non-existent variable {} with value {}", _0, _1)]
-    NonExistentAssign(String, String),
+    #[fail(display = "Cannot assign non-existent variable {} with value {} of type {}", _0, _1, _2)]
+    NonExistentAssign(String, String, String),
     #[fail(display = "Unknown variable: {}", _0)]
     UnknownVariable(String),
+    #[fail(display = "Wrong value {} for type {}", _0, _1)]
+    TypeMismatch(String, String),
     #[fail(display = "ICE: Interning failed: {:?}", _0)]
     InternFailure(#[cause] ::symtern::Error)
 }
@@ -41,13 +44,35 @@ impl From<::symtern::Error> for InterpreterError {
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
+pub struct TypedValue {
+    value: Value,
+    ty: Ty,
+}
+
+impl TypedValue {
+    fn unchecked(value: Value, ty: Ty) -> Self {
+        TypedValue {
+            value,
+            ty
+        }
+    }
+    fn new(value: Value, ty: Ty, interner: &Interner) -> Result<Self> {
+        if type_matches(&value, &ty, interner) {
+            Ok(TypedValue::unchecked(value, ty))
+        } else {
+            Err(TypeMismatch(format!("{}", value), format!("{:?}", ty)))
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Value {
     Invalid,
     Tup(Vec<Value>),
     Uni(usize, Box<Value>, usize),
     Int(i32),
     Bool(bool),
-    Fun(Vec<ast::Identifier>, Vec<Expression>, Vec<(ast::Identifier, Value)>),
+    Fun(Vec<ast::Identifier>, Vec<Expression>, Vec<(ast::Identifier, TypedValue)>),
 }
 
 impl fmt::Display for Value {
@@ -85,13 +110,126 @@ impl fmt::Display for Value {
     }
 }
 
-pub fn interpret(ast: Ast, interner: &Interner) -> Result<Value> {
+// TODO: Make primitives variants?
+// Doesn't really help getting interner rid though
+// as with custom types it's needed again.
+// Or should the we store the actual string here?
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+pub enum Ty {
+    Unkown,
+    Named(Symbol),
+    Tuple(Vec<Ty>),
+    Union(Vec<Ty>),
+    Function(Box<Ty>, Box<Ty>)
+}
+
+impl Ty {
+    fn display(&self, interner: &Interner) -> Result<String> {
+        use self::Ty::*;
+        let mut f = String::new();
+        match *self {
+            Unkown => f.push_str("?"),
+            Tuple(ref v) => {
+                f.push_str("[");
+                f.push_str(
+                    &process_results(v.iter()
+                        .map(|v| v.display(interner)), |mut v| v.join(", "))?
+                );
+                f.push_str(",]");
+            },
+            Union(ref v) => {
+                f.push_str("[");
+                f.push_str(
+                    &process_results(v.iter()
+                        .map(|v| v.display(interner)), |mut v| v.join("|"))?
+                );
+                f.push_str(",]");
+            },
+            Named(ref i) => f.push_str(&format!("{}", interner.resolve(*i)?)),
+            Function(ref param, ref ret) => {
+                f.push_str(&format!("{} -> {}", param.display(interner)?, ret.display(interner)?))
+            },
+        }
+        Ok(f)
+    }
+}
+
+impl<'a> From<&'a Type> for Ty {
+    fn from(t: &'a Type) -> Self {
+        match *t {
+            Type::Named(ref s) => Ty::Named(s.clone()),
+            Type::Tuple(ref t) => Ty::Tuple(t.iter().map(Ty::from).collect()),
+            Type::Union(ref t) => Ty::Union(t.iter().map(Ty::from).collect()),
+            Type::Function(ref p, ref r) => Ty::Function(Box::new(Ty::from(&**p)), Box::new(Ty::from(&**r))),
+        }
+    }
+}
+
+fn terminal(interner: &mut Interner) -> Result<TypedValue> {
+    Ok(TypedValue {
+        value: Tup(vec![]),
+        ty: Ty::Named(interner.intern("[,]")?),
+    })
+}
+
+fn initial(interner: &mut Interner) -> Result<TypedValue> {
+    Ok(TypedValue {
+        value: Uni(0, Box::new(Invalid), 0),
+        ty: Ty::Named(interner.intern("[|]")?),
+    })
+}
+
+fn invalid() -> TypedValue {
+    TypedValue {
+        value: Invalid,
+        ty: Ty::Unkown,
+    }
+}
+
+fn bool_typed(value: Value, interner: &mut Interner) -> Result<TypedValue> {
+    if let Bool(_) = value {
+        Ok(TypedValue {
+            value,
+            ty: Ty::Named(interner.intern("Bool")?),
+        })
+    } else {
+        panic!("ICE: Non-bool Bool");
+    }
+}
+
+fn int_typed(value: Value, interner: &mut Interner) -> Result<TypedValue> {
+    if let Int(_) = value {
+        Ok(TypedValue {
+            value,
+            ty: Ty::Named(interner.intern("I32")?),
+        })
+    } else {
+        panic!("ICE: Non-int int");
+    }
+}
+
+fn union_typed(index: usize, value: TypedValue, size: usize) -> Result<TypedValue> {
+    if let Uni(..) = value.value {
+        let tys = repeat(Ty::Unkown).take(index)
+            .chain(once(value.ty))
+            .chain(repeat(Ty::Unkown).take(size - index - 1))
+            .collect();
+        Ok(TypedValue {
+            value: value.value,
+            ty: Ty::Union(tys),
+        })
+    } else {
+        panic!("ICE: Non-union union");
+    }
+}
+
+pub fn interpret(ast: Ast, interner: &mut Interner) -> Result<TypedValue> {
     interpret_scope(&ast.expressions, &mut Memory::new(), interner)
 }
 
-fn interpret_scope(expressions: &[Expression], memory: &mut Memory<Value>, interner: &Interner) -> Result<Value> {
+fn interpret_scope(expressions: &[Expression], memory: &mut Memory<TypedValue>, interner: &mut Interner) -> Result<TypedValue> {
     memory.scope(|memory| {
-        let mut value = Tup(vec![]);
+        let mut value = terminal(interner)?;
         for e in expressions {
             value = execute(e, memory, interner)?;
         }
@@ -99,7 +237,7 @@ fn interpret_scope(expressions: &[Expression], memory: &mut Memory<Value>, inter
     })
 }
 
-fn execute(e: &Expression, memory: &mut Memory<Value>, interner: &Interner) -> Result<Value> {
+fn execute(e: &Expression, memory: &mut Memory<TypedValue>, interner: &mut Interner) -> Result<TypedValue> {
     Ok(match *e {
         Scope { ref expressions } => interpret_scope(expressions, memory, interner)?,
         Function { ref params, ref expressions } => Memory::new().scope(|mut closed| {
@@ -110,48 +248,53 @@ fn execute(e: &Expression, memory: &mut Memory<Value>, interner: &Interner) -> R
             find_free_variables(&mut free, &mut closed, expressions);
             let closed_over = free.iter()
                 .map(|f| {
-                    let c = memory.update(f, Invalid)
+                    let c = memory.update(f, invalid())
                         .expect(&format!("Failed to close over variable: {:?} => {:?}", f, interner.resolve(f.0)));
                     (*f, c)
                 }).collect();
-            Value::Fun(params.clone(), expressions.clone(), closed_over)
-        }),
+            // TODO: Type
+            let fun = Value::Fun(params.clone(), expressions.clone(), closed_over);
+            TypedValue::new(fun, Ty::Unkown, interner)
+        })?,
         Declaration { ref identifier, ref value, ref ty } => {
             // TODO: Shadowing
             let value = value
                 .as_ref()
                 .map(|v| execute(&*v, memory, interner))
-                .unwrap_or(Ok(Invalid))?;
+                .unwrap_or(Ok(invalid()))?;
             if let Some(ref ty) = *ty {
-                if !type_matches(&value, ty, interner) {
+                if !type_matches(&value.value, &Ty::from(ty), interner) {
                     panic!("Trying to assign wrong type of value. {:?} is not of type {:?}", value, ty);
                 }
             }
             memory.create(*identifier, value);
-            Tup(vec![])
+            terminal(interner)?
         },
         Literal(ref l) => match *l {
             Integer(ref n) => {
-                let n = interner.resolve(*n).expect("No such literal");
-                Int(str::parse(n).expect("Literal couldn't be parsed to integer"))
+                let val = {
+                    let n = interner.resolve(*n).expect("No such literal");
+                    str::parse(n).expect("Literal couldn't be parsed to integer")
+                };
+                int_typed(Int(val), interner)?
             },
             Boolean(ref b) => {
-                Bool(*b)
+                bool_typed(Bool(*b), interner)?
             }
         },
         Identifier(ref i) => {
-            memory.update(i, Invalid).ok_or(UnknownVariable(interner.resolve(i.0)?.into()))?
+            memory.update(i, invalid()).ok_or(UnknownVariable(interner.resolve(i.0)?.into()))?
         },
-        Tuple { ref value } => Tup(
+        Tuple { ref value } => unimplemented!()/*Tup(
             value.iter()
                 .map(|e| execute(e, memory, interner))
                 .collect::<Result<_>>()?
-        ),
+        )*/,
         Union(ref u) => if let Some(ref u) = *u {
             let value = execute(&*u.value, memory, interner)?;
-            Uni(u.position, Box::new(value), u.size)
+            union_typed(u.position, value, u.size)?
         } else {
-            Uni(0, Box::new(Invalid), 0)
+            initial(interner)?
         },
         If(ref branch) => {
             match *branch {
@@ -165,10 +308,15 @@ fn execute(e: &Expression, memory: &mut Memory<Value>, interner: &Interner) -> R
             Assignment { ref identifier, ref value } => {
                 let value = execute(value, memory, interner)?;
                 // TODO: Typecheck
-                let target = memory.get_mut(identifier).ok_or(NonExistentAssign(interner.resolve(identifier.0)?.into(), format!("{}", value)))?;
+                let target = memory.get_mut(identifier)
+                    .ok_or(NonExistentAssign(
+                        interner.resolve(identifier.0)?.into(),
+                        format!("{}", value.value),
+                        value.ty.display(interner)?,
+                    ))?;
                 replace(target, value)
             },
-            Addition { ref parameters } => Int(
+            Addition { ref parameters } => unimplemented!()/*Int(
                 parameters.iter()
                     .map(|e| execute(e, memory, interner))
                     .fold_results(0, |a, b|
@@ -178,24 +326,28 @@ fn execute(e: &Expression, memory: &mut Memory<Value>, interner: &Interner) -> R
                             panic!("Cannot add: {:?} + {:?}", a, b);
                         }
                     )?
-            ),
+            )*/,
             Indexing { ref target, ref index, } => {
                 let index = execute(index, memory, interner)?;
-                match *memory.get_mut(target).expect("Indexable should exists") {
-                    Tup(ref mut value) => {
-                        let index = match index {
+                let container = memory.get_mut(target).expect("Indexable should exists");
+                match (&mut container.value, &mut container.ty) {
+                    (&mut Tup(ref mut value), &mut Ty::Tuple(ref mut ty)) => {
+                        let index = match index.value {
                             Int(n) => n,
                             _ => panic!("Cannot index with non-integer."),
                         };
                         let value = value.get_mut(index as usize)
                             .expect("Out of bounds access");
-                        replace(value, Invalid)
+                        let ty = ty.get_mut(index as usize).expect("Type should be checked");
+                        let ty = replace(ty, Ty::Unkown);
+                        TypedValue::new(replace(value, Invalid), ty, interner)?
                     }
                     _ => panic!("Cannot index"),
                 }
             },
             Calling { ref name, ref parameters } => {
-                match memory.update(name, Invalid).expect("Function should exists") {
+                let fun = memory.update(name, invalid()).expect("Function should exists");
+                match fun.value {
                     Fun(params, exprs, closed) => {
                         let mut memory = params.into_iter()
                             .zip(parameters.iter()
@@ -215,8 +367,9 @@ fn execute(e: &Expression, memory: &mut Memory<Value>, interner: &Interner) -> R
     })
 }
 
-fn execute_if(condition: &Expression, expressions: &[Expression], otherwise: &ast::If, memory: &mut Memory<Value>, interner: &Interner) -> Result<Value> {
-    let condition = match execute(condition, memory, interner)? {
+fn execute_if(condition: &Expression, expressions: &[Expression], otherwise: &ast::If, memory: &mut Memory<TypedValue>, interner: &mut Interner) -> Result<TypedValue> {
+    let condition = execute(condition, memory, interner)?;
+    let condition = match condition.value {
         Bool(b) => b,
         _ => panic!("Invalid condition."),
     };
@@ -234,17 +387,17 @@ fn execute_if(condition: &Expression, expressions: &[Expression], otherwise: &as
     }
 }
 
-fn type_matches(val: &Value, ty: &Type, interner: &Interner) -> bool {
+fn type_matches(val: &Value, ty: &Ty, interner: &Interner) -> bool {
     use self::Value::*;
     match *val {
         Invalid => panic!("Invalid value"),
-        Tup(ref v) => if let Type::Tuple(ref t) = *ty {
+        Tup(ref v) => if let Ty::Tuple(ref t) = *ty {
             v.iter().zip(t.iter())
                 .all(|(v, t)| type_matches(v, t, interner))
         } else {
             false
         },
-        Uni(ref index, ref v, ref size) => if let Type::Union(ref t) = *ty {
+        Uni(ref index, ref v, ref size) => if let Ty::Union(ref t) = *ty {
             if t.len() == *size {
                 type_matches(&v, &t[*index], interner)
             } else {
@@ -253,18 +406,18 @@ fn type_matches(val: &Value, ty: &Type, interner: &Interner) -> bool {
         } else {
             false
         },
-        Int(_) => if let Type::Named(ref n) = *ty {
+        Int(_) => if let Ty::Named(ref n) = *ty {
             "I32" == interner.resolve(*n).unwrap()
         } else {
             false
         },
-        Bool(_) => if let Type::Named(ref n) = *ty {
+        Bool(_) => if let Ty::Named(ref n) = *ty {
             "Bool" == interner.resolve(*n).unwrap()
         } else {
             false
         },
         // TODO: Typecheck functions
-        Fun(_, _, _) => if let Type::Function(_, _) = *ty {
+        Fun(_, _, _) => if let Ty::Function(_, _) = *ty {
             true
         } else {
             false
