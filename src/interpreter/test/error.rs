@@ -24,7 +24,7 @@ macro_rules! assert_error {
             let expected = $val;
             if error != expected {
                 panic!(
-                        "Expected:\n{:#?}\nInterpreted:\n{:#?}",
+                        "Expected:\n{}\nInterpreted:\n{}",
                         expected,
                         error);
             }
@@ -70,7 +70,7 @@ fn assigning_tuple_unknown_variable() {
     assert_error!({
         x = [1, 2,]
     }{
-        NonExistentAssign("x".into(), "[1, 2,]".into(), "[I32, I32]".into())
+        NonExistentAssign("x".into(), "[1, 2,]".into(), "[I32, I32,]".into())
     });
 }
 
@@ -80,5 +80,25 @@ fn assigning_union_unknown_variable() {
         x = [1|_|]
     }{
         NonExistentAssign("x".into(), "[1|_|]".into(), "[I32|?|]".into())
+    });
+}
+
+#[test]
+fn assign_bool_literal_to_int_variable() {
+    assert_error!({
+        let x: I32 = true
+    }{
+        ValueTypeMismatch("true".into(), "Bool".into(), "I32".into())
+    });
+}
+
+#[test]
+fn assign_tuple_variable_to_int_variable() {
+    assert_error!({
+        let y: [I32,] = [1,]
+        let x: I32
+        x = y
+    }{
+        ValueTypeMismatch("[1,]".into(), "[I32,]".into(), "I32".into())
     });
 }

@@ -75,7 +75,7 @@ fn interpret_add_from_variable() {
         let y: I32 = 2
         let x: I32 = (3 + y)
     }{
-        y => TyVal::unchecked(Invalid, Unkown)
+        y => TyVal::unchecked(Invalid, Unknown)
         x => TyVal::unchecked(Int(5), Named(int))
     });
 }
@@ -113,7 +113,7 @@ fn interpret_move() {
         let x: I32 = 1
         let y: I32 = x
     }{
-        x => TyVal::unchecked(Invalid, Unkown)
+        x => TyVal::unchecked(Invalid, Unknown)
         y => TyVal::unchecked(Int(1), Named(int))
     });
 }
@@ -198,7 +198,7 @@ fn interpret_tuple_indexing() {
             ]),
             Tuple(vec![
                 Named(int),
-                Unkown,
+                Unknown,
                 Named(int),
             ]))
         y => TyVal::unchecked(Int(2), Named(int))
