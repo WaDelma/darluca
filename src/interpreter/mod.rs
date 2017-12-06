@@ -6,7 +6,6 @@ use itertools::process_results;
 use std::collections::HashSet;
 use std::mem::replace;
 use std::iter::{once, repeat};
-use std::fmt;
 
 use parser::ast::{self, Ast, Expression, Type};
 use parser::ast::Expression::*;
@@ -29,8 +28,10 @@ type Result<T> = ::std::result::Result<T, InterpreterError>;
 pub enum InterpreterError {
     #[fail(display = "Cannot assign non-existent variable {} with value {} of type {}", _0, _1, _2)]
     NonExistentAssign(String, String, String),
-    #[fail(display = "Unknown variable: {}", _0)]
+    #[fail(display = "Cannot access unknown variable {}", _0)]
     UnknownVariable(String),
+    #[fail(display = "Cannot capture unknown variable {}", _0)]
+    UnknownCapture(String),
     #[fail(display = "Wrong value {} of type {} for type {}", _0, _1, _2)]
     ValueTypeMismatch(String, String, String),
     #[fail(display = "ICE: Interning failed: {:?}", _0)]
@@ -62,7 +63,7 @@ impl TypedValue {
         if val_ty.is_subtype_of(&ty) {
             Ok(TypedValue::unchecked(value, ty))
         } else {
-            Err(ValueTypeMismatch(format!("{}", value), val_ty.display(interner)?, ty.display(interner)?))
+            Err(ValueTypeMismatch(value.display(interner)?, val_ty.display(interner)?, ty.display(interner)?))
         }
     }
 
@@ -70,58 +71,78 @@ impl TypedValue {
         if self.ty.is_subtype_of(&other.ty) {
             Ok(replace(self, other))
         } else {
-            Err(ValueTypeMismatch(format!("{}", other.value), other.ty.display(interner)?, self.ty.display(interner)?))
+            Err(ValueTypeMismatch(other.value.display(interner)?, other.ty.display(interner)?, self.ty.display(interner)?))
         }
+    }
+}
+
+impl Memory<TypedValue> {
+    pub fn replace(&mut self, i: &ast::Identifier, mut v: TypedValue, interner: &Interner) -> Option<Result<TypedValue>> {
+        self.get_mut(i)
+            .map(|t| {
+                if v.ty.is_subtype_of(&t.ty) {
+                    v.ty = t.ty.clone();
+                    Ok(replace(t, v))
+                } else {
+                    Err(ValueTypeMismatch(v.value.display(interner)?, v.ty.display(interner)?, t.ty.display(interner)?))
+                }
+            })
     }
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Value {
+    // TODO: Is there difference between invalid value and initial object?
     Invalid,
     Tup(Vec<Value>),
     Uni(usize, Box<Value>, usize),
     Int(i32),
     Bool(bool),
+    // TODO: Should the function value carry it's type? The closed values already do...
     Fun(Vec<ast::Identifier>, Vec<Expression>, Vec<(ast::Identifier, TypedValue)>),
 }
 
-impl fmt::Display for Value {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl Value {
+    fn display(&self, interner: &Interner) -> Result<String> {
+        let mut f = String::new();
         match *self {
-            Invalid => f.write_str("Invalid"),
+            Invalid => f.push_str("Invalid"),
             Tup(ref v) => {
-                f.write_str("[")?;
-                f.write_str(
-                    &v.iter()
-                        .map(|v| format!("{}", v))
-                        .join(", ")
-                )?;
-                f.write_str(",]")
+                f.push_str("[");
+                f.push_str(
+                    &process_results(v.iter()
+                        .map(|v| v.display(interner)), |mut v| v.join(", "))?
+                );
+                f.push_str(",]")
             },
             Uni(ref index, ref val, ref size) => {
-                f.write_str("[")?;
+                f.push_str("[");
                 for _ in 0..*index {
-                    f.write_str("_|")?;
+                    f.push_str("_|");
                 }
-                f.write_str(&format!("{}", val))?;
-                f.write_str("|")?;
+                f.push_str(&format!("{}|", val.display(interner)?));
                 for _ in (index + 1)..*size {
-                    f.write_str("_|")?;
+                    f.push_str("_|");
                 }
-                f.write_str("]")
+                f.push_str("]")
             },
-            Int(ref i) => f.write_str(&format!("{}", i)),
-            Bool(ref b) => f.write_str(&format!("{}", b)),
-            Fun(ref params, ref exprs, ref closed) => {
-                // TODO: Proper function formating
-                f.write_str("Function")
+            Int(ref i) => f.push_str(&format!("{}", i)),
+            Bool(ref b) => f.push_str(&format!("{}", b)),
+            Fun(ref params, ..) => {
+                f.push_str("[");
+                f.push_str(
+                    &process_results(params.iter()
+                        .map(|v| interner.resolve(v.0)), |mut v| v.join(", "))?
+                );
+                f.push_str(",] -> _");
             },
         }
+        Ok(f)
     }
 }
 
 // TODO: Make primitives variants?
-// Doesn't really help getting interner rid though
+// Doesn't really help getting rid of interner though
 // as with custom types it's needed again.
 // Or should the we store the actual string here?
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
@@ -148,7 +169,8 @@ impl Ty {
             ),
             Int(_) => Ty::Named(interner.intern("I32")?),
             Bool(_) => Ty::Named(interner.intern("Bool")?),
-            Fun(..) => Unknown, // TOOD: Function type
+            // TODO: Closures vs functions.
+            Fun(..) => Ty::Function(Box::new(Unknown), Box::new(Unknown)),
         })
     }
 
@@ -159,6 +181,10 @@ impl Ty {
             (&Tuple(ref a), &Tuple(ref b)) => a.iter().zip(b.iter()).all(|(a, b)| a.is_subtype_of(b)),
             // TODO: Initial is subtype of all?
             (&Union(ref a), &Union(ref b)) => a.iter().zip(b.iter()).all(|(a, b)| a.is_subtype_of(b)),
+            // Contravariant on parameter and covariant on return type
+            (&Function(ref ai, ref ar), &Function(ref bi, ref br)) => bi.is_subtype_of(ai) && ar.is_subtype_of(br),
+            // TODO: These should impose subtype requirements.
+            (&Unknown, _) | (_, &Unknown) => true,
             _ => false,
         }
     }
@@ -288,10 +314,10 @@ fn execute(e: &Expression, memory: &mut Memory<TypedValue>, interner: &mut Inter
             find_free_variables(&mut free, &mut closed, expressions);
             let closed_over = free.iter()
                 .map(|f| {
-                    let c = memory.update(f, invalid())
-                        .expect(&format!("Failed to close over variable: {:?} => {:?}", f, interner.resolve(f.0)));
-                    (*f, c)
-                }).collect();
+                    let c = memory.replace(f, invalid(), interner)
+                        .unwrap_or(Err(UnknownCapture(interner.resolve(f.0)?.into())))?;
+                    Ok((*f, c))
+                }).collect::<Result<_>>()?;
             let fun = Value::Fun(params.clone(), expressions.clone(), closed_over);
             // TODO: Closure vs function
             TypedValue::new(fun, Ty::Function(Box::new(Ty::from(parameter_ty)), Box::new(Ty::from(return_ty))), interner)
@@ -304,7 +330,7 @@ fn execute(e: &Expression, memory: &mut Memory<TypedValue>, interner: &mut Inter
                 if v.ty.is_subtype_of(&ty) {
                     v.ty = ty;
                 } else {
-                    return Err(ValueTypeMismatch(format!("{}", v.value), v.ty.display(interner)?, ty.display(interner)?))
+                    return Err(ValueTypeMismatch(v.value.display(interner)?, v.ty.display(interner)?, ty.display(interner)?))
                 }
                 v
             } else {
@@ -328,7 +354,8 @@ fn execute(e: &Expression, memory: &mut Memory<TypedValue>, interner: &mut Inter
             }
         },
         Identifier(ref i) => {
-            memory.update(i, invalid()).ok_or(UnknownVariable(interner.resolve(i.0)?.into()))?
+            memory.replace(i, invalid(), interner)
+                .unwrap_or(Err(UnknownVariable(interner.resolve(i.0)?.into())))?
         },
         Tuple { ref value } => {
             tuple_typed(value.iter()
@@ -353,13 +380,12 @@ fn execute(e: &Expression, memory: &mut Memory<TypedValue>, interner: &mut Inter
         Operation(ref o) => match *o {
             Assignment { ref identifier, ref value } => {
                 let value = execute(value, memory, interner)?;
-                let target = memory.get_mut(identifier)
-                    .ok_or(NonExistentAssign(
-                        interner.resolve(identifier.0)?.into(),
-                        format!("{}", value.value),
-                        value.ty.display(interner)?,
-                    ))?;
-                target.assign(value, interner)?
+                let n = NonExistentAssign(
+                    interner.resolve(identifier.0)?.into(),
+                    value.value.display(interner)?,
+                    value.ty.display(interner)?,
+                );
+                memory.replace(identifier, value, interner).unwrap_or(Err(n))?
             },
             Addition { ref parameters } => {
                 int_typed(parameters.iter()
@@ -384,14 +410,13 @@ fn execute(e: &Expression, memory: &mut Memory<TypedValue>, interner: &mut Inter
                         let value = value.get_mut(index as usize)
                             .expect("Out of bounds access");
                         let ty = ty.get_mut(index as usize).expect("Type should've been checked");
-                        let ty = replace(ty, Ty::Unknown);
-                        TypedValue::new(replace(value, Invalid), ty, interner)?
+                        TypedValue::new(replace(value, Invalid), ty.clone(), interner)?
                     }
                     _ => panic!("Cannot index"),
                 }
             },
             Calling { ref name, ref parameters } => {
-                let fun = memory.update(name, invalid()).expect("Function should exists");
+                let fun = memory.replace(name, invalid(), interner).expect("Function should exists")?;
                 match fun.value {
                     Fun(params, exprs, closed) => {
                         let mut memory = params.into_iter()

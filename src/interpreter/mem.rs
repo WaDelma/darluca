@@ -41,10 +41,6 @@ impl<D> Memory<D> {
         self.scopes.last_mut().and_then(|l| l.insert(i, v))
     }
 
-    pub fn update(&mut self, i: &Identifier, v: D) -> Option<D> {
-        self.get_mut(i).map(|va| replace(va, v))
-    }
-
     pub fn scope<F, T>(&mut self, f: F) -> T
         where F: FnOnce(&mut Self) -> T
     {

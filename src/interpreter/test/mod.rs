@@ -78,7 +78,7 @@ fn interpret_add_from_variable() {
         let y: I32 = 2
         let x: I32 = (3 + y)
     }{
-        y => TyVal::unchecked(Invalid, Unknown)
+        y => TyVal::unchecked(Invalid, Named(int))
         x => TyVal::unchecked(Int(5), Named(int))
     });
 }
@@ -116,7 +116,7 @@ fn interpret_move() {
         let x: I32 = 1
         let y: I32 = x
     }{
-        x => TyVal::unchecked(Invalid, Unknown)
+        x => TyVal::unchecked(Invalid, Named(int))
         y => TyVal::unchecked(Int(1), Named(int))
     });
 }
@@ -201,7 +201,7 @@ fn interpret_tuple_indexing() {
                 ]),
                 Tuple(vec![
                     Named(int),
-                    Unknown,
+                    Named(int),
                     Named(int),
                 ])
             )
@@ -369,7 +369,7 @@ fn interpret_closure() {
                 x
             }
         }
-        let y = fun[,]
+        let y: I32 = fun[,]
     }{
         fun => TyVal::unchecked(Invalid, Function(Box::new(Tuple(vec![])), Box::new(Named(int))))
         y => TyVal::unchecked(Int(1), Named(int))
@@ -384,17 +384,17 @@ fn interpret_closure_closure() {
     let mut interner = Interner::new();
     let int = interner.intern("I32").unwrap();
     assert_parse!(interner {
-        let fun: ([I32,] -> I32) = {
+        let fun: (I32 -> I32) = {
             let x: I32 = 1
             [y: I32,] -> I32 {
-                let z = [,] -> I32 {
+                let z: ([,] -> I32) = [,] -> I32 {
                     let x: [I32, I32,] = [2, y,]
                     (x[1] + x[0])
                 }
                 (z[,] + x)
             }
         }
-        let y = fun[3,]
+        let y: I32 = fun[3,]
     }{
         fun => TyVal::unchecked(Invalid, Function(Box::new(Named(int)), Box::new(Named(int))))
         y => TyVal::unchecked(Int(6), Named(int))
