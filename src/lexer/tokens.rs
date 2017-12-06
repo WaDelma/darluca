@@ -1,8 +1,8 @@
 use std::slice;
 use std::iter::Enumerate;
-use std::ops::{Range, RangeTo, RangeFrom, RangeFull};
+use std::ops::{Range, RangeFrom, RangeFull, RangeTo};
 
-use nom::{InputLength, InputIter, Slice};
+use nom::{InputIter, InputLength, Slice};
 
 use interner::Symbol;
 
@@ -53,13 +53,13 @@ pub enum Punctuation {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Direction {
     Left,
-    Right
+    Right,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Balanced {
     Open,
-    Close
+    Close,
 }
 
 impl From<Operator> for Token {
@@ -94,7 +94,7 @@ pub struct Tokens {
 impl Tokens {
     pub fn borrow(&self) -> Tks {
         Tks {
-            tokens: &self.tokens[..]
+            tokens: &self.tokens[..],
         }
     }
 }
@@ -121,7 +121,7 @@ impl<'a> Slice<Range<usize>> for Tks<'a> {
     #[inline]
     fn slice(&self, range: Range<usize>) -> Self {
         Tks {
-            tokens: &self.tokens[range]
+            tokens: &self.tokens[range],
         }
     }
 }
@@ -163,7 +163,8 @@ impl<'a> InputIter for Tks<'a> {
     }
     #[inline]
     fn position<P>(&self, predicate: P) -> Option<usize>
-        where P: Fn(Self::RawItem) -> bool,
+    where
+        P: Fn(Self::RawItem) -> bool,
     {
         self.tokens.iter().position(|b| predicate(b.clone()))
     }

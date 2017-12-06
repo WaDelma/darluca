@@ -29,7 +29,7 @@ macro_rules! assert_parse {
             let ast = ::parser::parse(tokens.borrow()).unwrap().1;
             let mut memory = Memory::new();
             match ::interpreter::interpret_scope(&ast.expressions, &mut memory, &mut $interner) {
-                Err(e) => panic!("Interpreting failed: {}", e), 
+                Err(e) => panic!("Interpreting failed: {}", e),
                 _ => {},
             }
             let mut n = 1;

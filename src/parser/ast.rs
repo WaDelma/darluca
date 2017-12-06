@@ -57,7 +57,7 @@ pub enum Operation {
     Calling {
         name: Identifier,
         parameters: Vec<Expression>,
-    }
+    },
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
@@ -76,11 +76,11 @@ pub enum Type {
     Named(Symbol),
     Tuple(Vec<Type>),
     Union(Vec<Type>),
-    Function(Box<Type>, Box<Type>)
+    Function(Box<Type>, Box<Type>),
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Literal {
     Integer(Symbol),
-    Boolean(bool)
+    Boolean(bool),
 }

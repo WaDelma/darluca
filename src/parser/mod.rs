@@ -1,6 +1,6 @@
-use nom::{IResult, ErrorKind, Needed};
+use nom::{ErrorKind, IResult, Needed};
 
-use lexer::tokens::{self, Token, Tks};
+use lexer::tokens::{self, Tks, Token};
 use lexer::tokens::Punctuation::*;
 use lexer::tokens::Reserved::*;
 use lexer::tokens::Balanced::*;
@@ -347,7 +347,9 @@ named!(branch(Tks) -> ast::If,
                     )
                 )
             ) >>
-            (Box::new(condition), expressions, Box::new(otherwise.unwrap_or_else(|| ast::If::Else(vec![]))))
+            (Box::new(condition),expressions, Box::new(
+                otherwise.unwrap_or_else(|| ast::If::Else(vec![]))
+            ))
         ),
         |(condition, expressions, otherwise)| {
             ast::If::Condition {
@@ -395,7 +397,7 @@ named!(function(Tks) -> Expression,
                 do_parse!(
                     ident: identifier!() >>
                     param_ty: opt!(preceded!(
-                        tag_token!(Colon), 
+                        tag_token!(Colon),
                         ty
                     )) >>
                     (ident, param_ty)
@@ -409,7 +411,8 @@ named!(function(Tks) -> Expression,
             (params, scope, return_ty.unwrap_or_else(|| Type::Unknown))
         ),
         |(parameters, scope, return_ty)| {
-            let (mut params, mut parameter_ty) = (Vec::with_capacity(parameters.len()), Vec::with_capacity(parameters.len()));
+            let mut params = Vec::with_capacity(parameters.len());
+            let mut parameter_ty = Vec::with_capacity(parameters.len());
             for (p, t) in parameters {
                 params.push(p);
                 parameter_ty.push(t.unwrap_or_else(|| Type::Unknown));

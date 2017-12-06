@@ -1,6 +1,6 @@
 use std::str;
 
-use nom::{is_digit, is_alphanumeric};
+use nom::{is_alphanumeric, is_digit};
 use symtern::prelude::*;
 
 use interner::Interner;
@@ -30,9 +30,7 @@ pub struct Lexer<'ctx> {
 
 impl<'ctx> Lexer<'ctx> {
     pub fn new(interner: &'ctx mut Interner) -> Self {
-        Lexer {
-            interner,
-        }
+        Lexer { interner }
     }
 
     method!(identifier<Lexer<'ctx>>(&[u8]) -> Token, self,

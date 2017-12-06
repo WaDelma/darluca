@@ -1,13 +1,13 @@
 //#![feature(trace_macros)]
 //#![feature(log_syntax)]
 
-#[macro_use]
-extern crate nom;
-extern crate symtern;
-extern crate itertools;
 extern crate failure;
 #[macro_use]
 extern crate failure_derive;
+extern crate itertools;
+#[macro_use]
+extern crate nom;
+extern crate symtern;
 
 pub mod lexer;
 pub mod parser;
