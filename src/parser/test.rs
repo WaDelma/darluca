@@ -2,8 +2,7 @@ use symtern::prelude::*;
 
 use interner::Interner;
 
-use super::parse;
-use super::ast::{self, Ast, Expression, Identifier, Type, Literal, Operation};
+use super::ast::{self, Ast, Expression, Identifier, Type};
 use super::ast::Expression::*;
 use super::ast::Literal::*;
 use super::ast::Operation::*;

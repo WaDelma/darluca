@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::iter::FromIterator;
-use std::mem::replace;
 
 use parser::ast::Identifier;
 

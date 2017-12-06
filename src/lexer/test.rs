@@ -3,7 +3,7 @@ use symtern::prelude::*;
 use lexer::Lexer;
 use interner::Interner;
 
-use super::tokens::{Token, Tokens, Tks};
+use super::tokens::Tokens;
 use super::tokens::Token::*;
 use super::tokens::Punctuation::*;
 use super::tokens::Balanced::*;

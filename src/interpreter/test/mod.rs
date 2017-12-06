@@ -1,7 +1,6 @@
 use symtern::prelude::*;
 
 use interner::Interner;
-use lexer::Lexer;
 
 use super::Value::*;
 use super::Ty::*;

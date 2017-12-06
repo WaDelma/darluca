@@ -1,26 +1,26 @@
 use symtern::prelude::*;
 
 use itertools::Itertools;
-use itertools::process_results;
 
 use std::collections::HashSet;
 use std::mem::replace;
-use std::iter::{once, repeat};
+use std::iter::once;
 
-use parser::ast::{self, Ast, Expression, Type};
+use parser::ast::{self, Ast, Expression};
 use parser::ast::Expression::*;
 use parser::ast::Literal::*;
 use parser::ast::Operation::*;
 use parser::ast::If::*;
-use interner::{Interner, Symbol};
+use interner::Interner;
 
-use self::Value::*;
 use self::InterpreterError::*;
-use self::mem::Memory;
+use self::repr::{Value, TypedValue, Ty, terminal, invalid, int_typed, bool_typed, union_typed, tuple_typed};
+use self::repr::Value::*;
+use self::repr::mem::Memory;
 
 #[cfg(test)]
 mod test;
-mod mem;
+mod repr;
 
 type Result<T> = ::std::result::Result<T, InterpreterError>;
 
@@ -41,251 +41,6 @@ pub enum InterpreterError {
 impl From<::symtern::Error> for InterpreterError {
     fn from(e: ::symtern::Error) -> Self {
         InternFailure(e)
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
-pub struct TypedValue {
-    value: Value,
-    ty: Ty,
-}
-
-impl TypedValue {
-    fn unchecked(value: Value, ty: Ty) -> Self {
-        TypedValue {
-            value,
-            ty
-        }
-    }
-    
-    fn new(value: Value, ty: Ty, interner: &mut Interner) -> Result<Self> {
-        let val_ty = Ty::from_value(&value, interner)?;
-        if val_ty.is_subtype_of(&ty) {
-            Ok(TypedValue::unchecked(value, ty))
-        } else {
-            Err(ValueTypeMismatch(value.display(interner)?, val_ty.display(interner)?, ty.display(interner)?))
-        }
-    }
-
-    fn assign(&mut self, other: TypedValue, interner: &Interner) -> Result<TypedValue> {
-        if self.ty.is_subtype_of(&other.ty) {
-            Ok(replace(self, other))
-        } else {
-            Err(ValueTypeMismatch(other.value.display(interner)?, other.ty.display(interner)?, self.ty.display(interner)?))
-        }
-    }
-}
-
-impl Memory<TypedValue> {
-    pub fn replace(&mut self, i: &ast::Identifier, mut v: TypedValue, interner: &Interner) -> Option<Result<TypedValue>> {
-        self.get_mut(i)
-            .map(|t| {
-                if v.ty.is_subtype_of(&t.ty) {
-                    v.ty = t.ty.clone();
-                    Ok(replace(t, v))
-                } else {
-                    Err(ValueTypeMismatch(v.value.display(interner)?, v.ty.display(interner)?, t.ty.display(interner)?))
-                }
-            })
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
-pub enum Value {
-    // TODO: Is there difference between invalid value and initial object?
-    Invalid,
-    Tup(Vec<Value>),
-    Uni(usize, Box<Value>, usize),
-    Int(i32),
-    Bool(bool),
-    // TODO: Should the function value carry it's type? The closed values already do...
-    Fun(Vec<ast::Identifier>, Vec<Expression>, Vec<(ast::Identifier, TypedValue)>),
-}
-
-impl Value {
-    fn display(&self, interner: &Interner) -> Result<String> {
-        let mut f = String::new();
-        match *self {
-            Invalid => f.push_str("Invalid"),
-            Tup(ref v) => {
-                f.push_str("[");
-                f.push_str(
-                    &process_results(v.iter()
-                        .map(|v| v.display(interner)), |mut v| v.join(", "))?
-                );
-                f.push_str(",]")
-            },
-            Uni(ref index, ref val, ref size) => {
-                f.push_str("[");
-                for _ in 0..*index {
-                    f.push_str("_|");
-                }
-                f.push_str(&format!("{}|", val.display(interner)?));
-                for _ in (index + 1)..*size {
-                    f.push_str("_|");
-                }
-                f.push_str("]")
-            },
-            Int(ref i) => f.push_str(&format!("{}", i)),
-            Bool(ref b) => f.push_str(&format!("{}", b)),
-            Fun(ref params, ..) => {
-                f.push_str("[");
-                f.push_str(
-                    &process_results(params.iter()
-                        .map(|v| interner.resolve(v.0)), |mut v| v.join(", "))?
-                );
-                f.push_str(",] -> _");
-            },
-        }
-        Ok(f)
-    }
-}
-
-// TODO: Make primitives variants?
-// Doesn't really help getting rid of interner though
-// as with custom types it's needed again.
-// Or should the we store the actual string here?
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
-pub enum Ty {
-    Unknown,
-    Named(Symbol),
-    Tuple(Vec<Ty>),
-    Union(Vec<Ty>),
-    // TODO: Make closures type unique
-    Function(Box<Ty>, Box<Ty>)
-}
-
-impl Ty {
-    fn from_value(value: &Value, interner: &mut Interner) -> Result<Self> {
-        use self::Ty::*;
-        Ok(match *value {
-            Invalid => Unknown,
-            Tup(ref v) => Tuple(v.iter().map(|v| Ty::from_value(v, interner)).collect::<Result<Vec<_>>>()?),
-            Uni(ref index, ref value, ref size) => Union(
-                repeat(Ok(Unknown)).take(*index)
-                    .chain(once(Ty::from_value(&**value, interner)))
-                    .chain(repeat(Ok(Unknown)).take(size - index - 1))
-                    .collect::<Result<Vec<_>>>()?
-            ),
-            Int(_) => Ty::Named(interner.intern("I32")?),
-            Bool(_) => Ty::Named(interner.intern("Bool")?),
-            // TODO: Closures vs functions.
-            Fun(..) => Ty::Function(Box::new(Unknown), Box::new(Unknown)),
-        })
-    }
-
-    fn is_subtype_of(&self, other: &Ty) -> bool {
-        use self::Ty::*;
-        match (self, other) {
-            (&Named(ref a), &Named(ref b)) => a == b,
-            (&Tuple(ref a), &Tuple(ref b)) => a.iter().zip(b.iter()).all(|(a, b)| a.is_subtype_of(b)),
-            // TODO: Initial is subtype of all?
-            (&Union(ref a), &Union(ref b)) => a.iter().zip(b.iter()).all(|(a, b)| a.is_subtype_of(b)),
-            // Contravariant on parameter and covariant on return type
-            (&Function(ref ai, ref ar), &Function(ref bi, ref br)) => bi.is_subtype_of(ai) && ar.is_subtype_of(br),
-            // TODO: These should impose subtype requirements.
-            (&Unknown, _) | (_, &Unknown) => true,
-            _ => false,
-        }
-    }
-
-    fn display(&self, interner: &Interner) -> Result<String> {
-        use self::Ty::*;
-        let mut f = String::new();
-        match *self {
-            Unknown => f.push_str("?"),
-            Tuple(ref v) => {
-                f.push_str("[");
-                f.push_str(
-                    &process_results(v.iter()
-                        .map(|v| v.display(interner)), |mut v| v.join(", "))?
-                );
-                f.push_str(",]");
-            },
-            Union(ref v) => {
-                f.push_str("[");
-                f.push_str(
-                    &process_results(v.iter()
-                        .map(|v| v.display(interner)), |mut v| v.join("|"))?
-                );
-                f.push_str("|]");
-            },
-            Named(ref i) => f.push_str(&format!("{}", interner.resolve(*i)?)),
-            Function(ref param, ref ret) => {
-                f.push_str(&format!("{} -> {}", param.display(interner)?, ret.display(interner)?))
-            },
-        }
-        Ok(f)
-    }
-}
-
-impl<'a> From<&'a Type> for Ty {
-    fn from(t: &'a Type) -> Self {
-        match *t {
-            Type::Unknown => Ty::Unknown,
-            Type::Named(ref s) => Ty::Named(s.clone()),
-            Type::Tuple(ref t) => Ty::Tuple(t.iter().map(Ty::from).collect()),
-            Type::Union(ref t) => Ty::Union(t.iter().map(Ty::from).collect()),
-            Type::Function(ref p, ref r) => Ty::Function(Box::new(Ty::from(&**p)), Box::new(Ty::from(&**r))),
-        }
-    }
-}
-
-fn terminal() -> TypedValue {
-    TypedValue {
-        value: Tup(vec![]),
-        ty: Ty::Tuple(vec![]),
-    }
-}
-
-fn initial() -> TypedValue {
-    TypedValue {
-        value: Uni(0, Box::new(Invalid), 0),
-        ty: Ty::Union(vec![]),
-    }
-}
-
-fn invalid() -> TypedValue {
-    TypedValue {
-        value: Invalid,
-        ty: Ty::Unknown,
-    }
-}
-
-fn bool_typed(value: bool, interner: &mut Interner) -> Result<TypedValue> {
-    Ok(TypedValue {
-        value: Bool(value),
-        ty: Ty::Named(interner.intern("Bool")?),
-    })
-}
-
-fn int_typed(value: i32, interner: &mut Interner) -> Result<TypedValue> {
-    Ok(TypedValue {
-        value: Int(value),
-        ty: Ty::Named(interner.intern("I32")?),
-    })
-}
-
-fn union_typed(index: usize, value: TypedValue, size: usize) -> TypedValue {
-    let tys = repeat(Ty::Unknown).take(index)
-        .chain(once(value.ty))
-        .chain(repeat(Ty::Unknown).take(size - index - 1))
-        .collect();
-    TypedValue {
-        value: Uni(index, Box::new(value.value), size),
-        ty: Ty::Union(tys),
-    }
-}
-
-fn tuple_typed(values: Vec<TypedValue>) -> TypedValue {
-    let (mut vals, mut tys) = (Vec::with_capacity(values.len()), Vec::with_capacity(values.len()));
-    for tv in values {
-        vals.push(tv.value);
-        tys.push(tv.ty);
-    }
-    TypedValue {
-        value: Tup(vals),
-        ty: Ty::Tuple(tys),
     }
 }
 
@@ -324,21 +79,12 @@ fn execute(e: &Expression, memory: &mut Memory<TypedValue>, interner: &mut Inter
         })?,
         Declaration { ref identifier, ref value, ref ty } => {
             // TODO: Shadowing
-            let v = if let Some(ref v) = *value {
-                let mut v = execute(&*v, memory, interner)?;
-                let ty = Ty::from(ty);
-                if v.ty.is_subtype_of(&ty) {
-                    v.ty = ty;
-                } else {
-                    return Err(ValueTypeMismatch(v.value.display(interner)?, v.ty.display(interner)?, ty.display(interner)?))
-                }
-                v
-            } else {
-                let mut v = invalid();
-                v.ty = Ty::from(ty);
-                v
-            };
-            memory.create(*identifier, v);
+            let place = TypedValue::new(Invalid, Ty::from(ty), interner)?;
+            let val = value
+                .as_ref()
+                .map(|v| execute(&*v, memory, interner))
+                .unwrap_or(Ok(invalid()))?;
+            memory.create(*identifier, place.assign(val, interner)?);
             terminal()
         },
         Literal(ref l) => match *l {
@@ -366,8 +112,7 @@ fn execute(e: &Expression, memory: &mut Memory<TypedValue>, interner: &mut Inter
             let value = execute(&*u.value, memory, interner)?;
             union_typed(u.position, value, u.size)
         } else {
-            // TODO: Initial cannot be constructed!
-            initial()
+            panic!("Initial cannot be constructed!");
         },
         If(ref branch) => {
             match *branch {
@@ -382,34 +127,36 @@ fn execute(e: &Expression, memory: &mut Memory<TypedValue>, interner: &mut Inter
                 let value = execute(value, memory, interner)?;
                 let n = NonExistentAssign(
                     interner.resolve(identifier.0)?.into(),
-                    value.value.display(interner)?,
-                    value.ty.display(interner)?,
+                    value.value().display(interner)?,
+                    value.ty().display(interner)?,
                 );
                 memory.replace(identifier, value, interner).unwrap_or(Err(n))?
             },
             Addition { ref parameters } => {
                 int_typed(parameters.iter()
                     .map(|e| execute(e, memory, interner))
-                    .fold_results(0, |a, b|
-                        if let Int(b) = b.value {
+                    .fold_results(0, |a, b| {
+                        let bd = format!("{:?}", b);
+                        if let Int(b) = b.into_value() {
                             a + b
                         } else {
-                            panic!("Cannot add: {:?} + {:?}", a, b);
+                            panic!("Cannot add: {:?} + {}", a, bd);
                         }
-                    )?, interner)?
+                    })?, interner)?
             },
             Indexing { ref target, ref index, } => {
                 let index = execute(index, memory, interner)?;
                 let container = memory.get_mut(target).expect("Indexable should exists");
-                match (&mut container.value, &mut container.ty) {
-                    (&mut Tup(ref mut value), &mut Ty::Tuple(ref mut ty)) => {
-                        let index = match index.value {
+                // TODO: This is ugly. Refactor pls.
+                match container.split_mut_and_ref() {
+                    (&mut Tup(ref mut value), &Ty::Tuple(ref ty)) => {
+                        let index = match index.into_value() {
                             Int(n) => n,
                             _ => panic!("Cannot index with non-integer."),
                         };
                         let value = value.get_mut(index as usize)
                             .expect("Out of bounds access");
-                        let ty = ty.get_mut(index as usize).expect("Type should've been checked");
+                        let ty = ty.get(index as usize).expect("Type should've been checked");
                         TypedValue::new(replace(value, Invalid), ty.clone(), interner)?
                     }
                     _ => panic!("Cannot index"),
@@ -417,7 +164,7 @@ fn execute(e: &Expression, memory: &mut Memory<TypedValue>, interner: &mut Inter
             },
             Calling { ref name, ref parameters } => {
                 let fun = memory.replace(name, invalid(), interner).expect("Function should exists")?;
-                match fun.value {
+                match fun.into_value() {
                     Fun(params, exprs, closed) => {
                         let mut memory = params.into_iter()
                             .zip(parameters.iter()
@@ -437,7 +184,7 @@ fn execute(e: &Expression, memory: &mut Memory<TypedValue>, interner: &mut Inter
 
 fn execute_if(condition: &Expression, expressions: &[Expression], otherwise: &ast::If, memory: &mut Memory<TypedValue>, interner: &mut Interner) -> Result<TypedValue> {
     let condition = execute(condition, memory, interner)?;
-    let condition = match condition.value {
+    let condition = match condition.into_value() {
         Bool(b) => b,
         _ => panic!("Invalid condition."),
     };
