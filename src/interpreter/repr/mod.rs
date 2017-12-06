@@ -211,7 +211,7 @@ impl<'a> From<&'a Type> for Ty {
     fn from(t: &'a Type) -> Self {
         match *t {
             Type::Unknown => Ty::Unknown,
-            Type::Named(ref s) => Ty::Named(s.clone()),
+            Type::Named(ref s) => Ty::Named(*s),
             Type::Tuple(ref t) => Ty::Tuple(t.iter().map(Ty::from).collect()),
             Type::Union(ref t) => Ty::Union(t.iter().map(Ty::from).collect()),
             Type::Function(ref p, ref r) => Ty::Function(Box::new(Ty::from(&**p)), Box::new(Ty::from(&**r))),

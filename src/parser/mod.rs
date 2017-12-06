@@ -297,8 +297,8 @@ named!(union(Tks) -> Expression,
                 (before, value, after)
             ),
             |(before, value, after)| {
-                let before = before.map(|b| b.len()).unwrap_or(0);
-                let after = after.map(|b| b.len()).unwrap_or(0);
+                let before = before.map(|b| b.len()).unwrap_or_else(|| 0);
+                let after = after.map(|b| b.len()).unwrap_or_else(|| 0);
                 Expression::Union(Some(Union {
                     value: Box::new(value),
                     position: before,
@@ -347,7 +347,7 @@ named!(branch(Tks) -> ast::If,
                     )
                 )
             ) >>
-            (Box::new(condition), expressions, Box::new(otherwise.unwrap_or(ast::If::Else(vec![]))))
+            (Box::new(condition), expressions, Box::new(otherwise.unwrap_or_else(|| ast::If::Else(vec![]))))
         ),
         |(condition, expressions, otherwise)| {
             ast::If::Condition {
@@ -374,7 +374,7 @@ named!(declaration(Tks) -> Expression,
                 value: expression >>
                 (value)
             ))) >>
-            (identifier, ty.unwrap_or(Type::Unknown), value.map(Box::new))
+            (identifier, ty.unwrap_or_else(|| Type::Unknown), value.map(Box::new))
         ),
         |(identifier, ty, value)| {
             Expression::Declaration {
@@ -406,13 +406,13 @@ named!(function(Tks) -> Expression,
             tag_token!(Arrow(Right)) >>
             return_ty: opt!(ty) >>
             scope: scope >>
-            (params, scope, return_ty.unwrap_or(Type::Unknown))
+            (params, scope, return_ty.unwrap_or_else(|| Type::Unknown))
         ),
         |(parameters, scope, return_ty)| {
             let (mut params, mut parameter_ty) = (Vec::with_capacity(parameters.len()), Vec::with_capacity(parameters.len()));
             for (p, t) in parameters {
                 params.push(p);
-                parameter_ty.push(t.unwrap_or(Type::Unknown));
+                parameter_ty.push(t.unwrap_or_else(|| Type::Unknown));
             }
             let parameter_ty = if parameter_ty.len() > 1 || parameter_ty.is_empty() {
                 Type::Tuple(parameter_ty)

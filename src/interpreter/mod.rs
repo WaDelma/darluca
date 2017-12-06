@@ -44,7 +44,7 @@ impl From<::symtern::Error> for InterpreterError {
     }
 }
 
-pub fn interpret(ast: Ast, interner: &mut Interner) -> Result<TypedValue> {
+pub fn interpret(ast: &Ast, interner: &mut Interner) -> Result<TypedValue> {
     interpret_scope(&ast.expressions, &mut Memory::new(), interner)
 }
 
@@ -70,7 +70,7 @@ fn execute(e: &Expression, memory: &mut Memory<TypedValue>, interner: &mut Inter
             let closed_over = free.iter()
                 .map(|f| {
                     let c = memory.replace(f, invalid(), interner)
-                        .unwrap_or(Err(UnknownCapture(interner.resolve(f.0)?.into())))?;
+                        .unwrap_or_else(|| Err(UnknownCapture(interner.resolve(f.0)?.into())))?;
                     Ok((*f, c))
                 }).collect::<Result<_>>()?;
             let fun = Value::Fun(params.clone(), expressions.clone(), closed_over);
@@ -83,7 +83,7 @@ fn execute(e: &Expression, memory: &mut Memory<TypedValue>, interner: &mut Inter
             let val = value
                 .as_ref()
                 .map(|v| execute(&*v, memory, interner))
-                .unwrap_or(Ok(invalid()))?;
+                .unwrap_or_else(|| Ok(invalid()))?;
             memory.create(*identifier, place.assign(val, interner)?);
             terminal()
         },
@@ -101,7 +101,7 @@ fn execute(e: &Expression, memory: &mut Memory<TypedValue>, interner: &mut Inter
         },
         Identifier(ref i) => {
             memory.replace(i, invalid(), interner)
-                .unwrap_or(Err(UnknownVariable(interner.resolve(i.0)?.into())))?
+                .unwrap_or_else(|| Err(UnknownVariable(interner.resolve(i.0)?.into())))?
         },
         Tuple { ref value } => {
             tuple_typed(value.iter()
@@ -130,7 +130,7 @@ fn execute(e: &Expression, memory: &mut Memory<TypedValue>, interner: &mut Inter
                     value.value().display(interner)?,
                     value.ty().display(interner)?,
                 );
-                memory.replace(identifier, value, interner).unwrap_or(Err(n))?
+                memory.replace(identifier, value, interner).unwrap_or_else(|| Err(n))?
             },
             Addition { ref parameters } => {
                 int_typed(parameters.iter()
