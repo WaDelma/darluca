@@ -13,12 +13,14 @@ pub enum Expression {
     If(If),
     Declaration {
         identifier: Identifier,
-        ty: Option<Type>,
+        ty: Type,
         value: Option<Box<Expression>>,
     },
     Function {
         params: Vec<Identifier>,
         expressions: Vec<Expression>,
+        parameter_ty: Type,
+        return_ty: Type,
     },
     Tuple {
         value: Vec<Expression>,
@@ -70,6 +72,7 @@ pub struct Identifier(pub Symbol);
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Type {
+    Unknown,
     Named(Symbol),
     Tuple(Vec<Type>),
     Union(Vec<Type>),

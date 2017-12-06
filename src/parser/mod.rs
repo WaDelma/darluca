@@ -374,7 +374,7 @@ named!(declaration(Tks) -> Expression,
                 value: expression >>
                 (value)
             ))) >>
-            (identifier, ty, value.map(Box::new))
+            (identifier, ty.unwrap_or(Type::Unknown), value.map(Box::new))
         ),
         |(identifier, ty, value)| {
             Expression::Declaration {
@@ -392,19 +392,39 @@ named!(function(Tks) -> Expression,
             tag_token!(Square(Open)) >>
             params: separated_list!(
                 tag_token!(Comma),
-                identifier!()
+                do_parse!(
+                    ident: identifier!() >>
+                    param_ty: opt!(preceded!(
+                        tag_token!(Colon), 
+                        ty
+                    )) >>
+                    (ident, param_ty)
+                )
             ) >>
             tag_token!(Comma) >>
             tag_token!(Square(Close)) >>
             tag_token!(Arrow(Right)) >>
+            return_ty: opt!(ty) >>
             scope: scope >>
-            (params, scope)
+            (params, scope, return_ty.unwrap_or(Type::Unknown))
         ),
-        |(params, scope)| {
+        |(parameters, scope, return_ty)| {
+            let (mut params, mut parameter_ty) = (Vec::with_capacity(parameters.len()), Vec::with_capacity(parameters.len()));
+            for (p, t) in parameters {
+                params.push(p);
+                parameter_ty.push(t.unwrap_or(Type::Unknown));
+            }
+            let parameter_ty = if parameter_ty.len() > 1 || parameter_ty.is_empty() {
+                Type::Tuple(parameter_ty)
+            } else {
+                parameter_ty.remove(0)
+            };
             if let Expression::Scope { expressions } = scope {
                 Expression::Function {
                     params,
                     expressions,
+                    parameter_ty,
+                    return_ty,
                 }
             } else {
                 // TODO: If enum variants will become types...

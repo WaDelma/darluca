@@ -130,6 +130,7 @@ pub enum Ty {
     Named(Symbol),
     Tuple(Vec<Ty>),
     Union(Vec<Ty>),
+    // TODO: Make closures type unique
     Function(Box<Ty>, Box<Ty>)
 }
 
@@ -195,6 +196,7 @@ impl Ty {
 impl<'a> From<&'a Type> for Ty {
     fn from(t: &'a Type) -> Self {
         match *t {
+            Type::Unknown => Ty::Unknown,
             Type::Named(ref s) => Ty::Named(s.clone()),
             Type::Tuple(ref t) => Ty::Tuple(t.iter().map(Ty::from).collect()),
             Type::Union(ref t) => Ty::Union(t.iter().map(Ty::from).collect()),
@@ -278,7 +280,7 @@ fn interpret_scope(expressions: &[Expression], memory: &mut Memory<TypedValue>, 
 fn execute(e: &Expression, memory: &mut Memory<TypedValue>, interner: &mut Interner) -> Result<TypedValue> {
     Ok(match *e {
         Scope { ref expressions } => interpret_scope(expressions, memory, interner)?,
-        Function { ref params, ref expressions } => Memory::new().scope(|mut closed| {
+        Function { ref params, ref expressions, ref parameter_ty, ref return_ty } => Memory::new().scope(|mut closed| {
             let mut free = HashSet::new();
             for p in params.iter() {
                 closed.create(*p, ());
@@ -290,28 +292,24 @@ fn execute(e: &Expression, memory: &mut Memory<TypedValue>, interner: &mut Inter
                         .expect(&format!("Failed to close over variable: {:?} => {:?}", f, interner.resolve(f.0)));
                     (*f, c)
                 }).collect();
-            // TODO: Type
             let fun = Value::Fun(params.clone(), expressions.clone(), closed_over);
-            TypedValue::new(fun, Ty::Unknown, interner)
+            // TODO: Closure vs function
+            TypedValue::new(fun, Ty::Function(Box::new(Ty::from(parameter_ty)), Box::new(Ty::from(return_ty))), interner)
         })?,
         Declaration { ref identifier, ref value, ref ty } => {
             // TODO: Shadowing
             let v = if let Some(ref v) = *value {
                 let mut v = execute(&*v, memory, interner)?;
-                if let Some(ref ty) = *ty {
-                    let ty = Ty::from(ty);
-                    if v.ty.is_subtype_of(&ty) {
-                        v.ty = ty;
-                    } else {
-                        return Err(ValueTypeMismatch(format!("{}", v.value), v.ty.display(interner)?, ty.display(interner)?))
-                    }
+                let ty = Ty::from(ty);
+                if v.ty.is_subtype_of(&ty) {
+                    v.ty = ty;
+                } else {
+                    return Err(ValueTypeMismatch(format!("{}", v.value), v.ty.display(interner)?, ty.display(interner)?))
                 }
                 v
             } else {
                 let mut v = invalid();
-                if let Some(ref ty) = *ty {
-                    v.ty = Ty::from(ty);
-                }
+                v.ty = Ty::from(ty);
                 v
             };
             memory.create(*identifier, v);
@@ -408,9 +406,7 @@ fn execute(e: &Expression, memory: &mut Memory<TypedValue>, interner: &mut Inter
                     _ => panic!("Cannot call"),
                 }
             },
-            _ => unimplemented!(),
         },
-        _ => unimplemented!(),
     })
 }
 
@@ -469,7 +465,7 @@ fn find_free_variables<'a, I>(free: &mut HashSet<ast::Identifier>, closed: &mut 
                 }
                 closed.create(*identifier, ());
             },
-            Function { ref params, ref expressions, } => {
+            Function { ref params, ref expressions, ..} => {
                 closed.scope(|closed| {
                     for p in params {
                         closed.create(*p, ());

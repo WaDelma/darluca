@@ -54,7 +54,7 @@ fn parse_declaration() {
     }{
         Declaration {
             identifier: Identifier(x),
-            ty: Some(Type::Named(int)),
+            ty: Type::Named(int),
             value: Some(Box::new(Literal(Integer(one)))),
         }
     });
@@ -71,7 +71,7 @@ fn parse_empty_declaration() {
         Declaration {
             identifier: Identifier(x),
             value: None,
-            ty: Some(Type::Named(int)),
+            ty: Type::Named(int),
         }
     });
 }
@@ -86,7 +86,7 @@ fn parse_terminal_type() {
         Declaration {
             identifier: Identifier(x),
             value: None,
-            ty: Some(Type::Tuple(vec![])),
+            ty: Type::Tuple(vec![]),
         }
     });
 }
@@ -102,10 +102,10 @@ fn parse_tuple_type() {
         Declaration {
             identifier: Identifier(x),
             value: None,
-            ty: Some(Type::Tuple(vec![
+            ty: Type::Tuple(vec![
                     Type::Named(int),
                     Type::Named(int)
-                ])),
+                ]),
         }
     });
 }
@@ -121,12 +121,12 @@ fn parse_tuple_tuple_type() {
         Declaration {
             identifier: Identifier(x),
             value: None,
-            ty: Some(Type::Tuple(vec![
+            ty: Type::Tuple(vec![
                     Type::Named(int),
                     Type::Tuple(vec![
                         Type::Named(int)
                     ])
-                ])),
+                ]),
         }
     });
 }
@@ -141,7 +141,7 @@ fn parse_initial_type() {
         Declaration {
             identifier: Identifier(x),
             value: None,
-            ty: Some(Type::Union(vec![])),
+            ty: Type::Union(vec![]),
         }
     });
 }
@@ -157,10 +157,10 @@ fn parse_union_type() {
         Declaration {
             identifier: Identifier(x),
             value: None,
-            ty: Some(Type::Union(vec![
+            ty: Type::Union(vec![
                     Type::Named(int),
                     Type::Named(int)
-                ])),
+                ]),
         }
     });
 }
@@ -176,12 +176,12 @@ fn parse_union_union_type() {
         Declaration {
             identifier: Identifier(x),
             value: None,
-            ty: Some(Type::Union(vec![
+            ty: Type::Union(vec![
                     Type::Named(int),
                     Type::Union(vec![
                         Type::Named(int)
                     ])
-                ])),
+                ]),
         }
     });
 }
@@ -199,7 +199,7 @@ fn parse_assignment() {
         Declaration {
             identifier: Identifier(x),
             value: None,
-            ty: Some(Type::Named(int)),
+            ty: Type::Named(int),
         }
         Operation(Assignment {
             identifier: Identifier(x),
@@ -235,7 +235,7 @@ fn parse_scope_with_declaration() {
                 Declaration {
                     identifier: Identifier(x),
                     value: None,
-                    ty: Some(Type::Union(vec![])),
+                    ty: Type::Union(vec![]),
                 }
             ]
         }
@@ -403,12 +403,12 @@ fn parse_moving_into_scope() {
     }{
         Declaration {
             identifier: Identifier(x),
-            ty: Some(Type::Named(int)),
+            ty: Type::Named(int),
             value: Some(Box::new(Literal(Integer(one)))),
         }
         Declaration {
             identifier: Identifier(y),
-            ty: Some(Type::Named(int)),
+            ty: Type::Named(int),
             value: Some(Box::new(Scope {
                 expressions: vec![Expression::Identifier(Identifier(x))]
             })),
@@ -419,12 +419,31 @@ fn parse_moving_into_scope() {
 #[test]
 fn parse_function_declaration() {
     let mut interner = Interner::new();
+    let int = interner.intern("I32").unwrap();
+    let x = interner.intern("x").unwrap();
+    assert_parse!(interner {
+        [x: I32,] -> I32 {
+            x
+        }
+    }{
+        Function {
+            params: vec![Identifier(x)],
+            expressions: vec![Expression::Identifier(Identifier(x))],
+            parameter_ty: Type::Named(int),
+            return_ty: Type::Named(int),
+        }
+    });
+}
+
+#[test]
+fn parse_function_declaration_and_calling() {
+    let mut interner = Interner::new();
     let fun = interner.intern("fun").unwrap();
     let int = interner.intern("I32").unwrap();
     let x = interner.intern("x").unwrap();
     let one = interner.intern("1").unwrap();
     assert_parse!(interner {
-        let fun: (I32 -> I32) = [x,] -> {
+        let fun: (I32 -> I32) = [x: I32,] -> I32 {
             x
         }
         fun[1,]
@@ -434,8 +453,10 @@ fn parse_function_declaration() {
             value: Some(Box::new(Function {
                 params: vec![Identifier(x)],
                 expressions: vec![Expression::Identifier(Identifier(x))],
+                parameter_ty: Type::Named(int),
+                return_ty: Type::Named(int),
             })),
-            ty: Some(Type::Function(Box::new(Type::Named(int)), Box::new(Type::Named(int)))),
+            ty: Type::Function(Box::new(Type::Named(int)), Box::new(Type::Named(int))),
         }
         Operation(Calling {
             name: Identifier(fun),

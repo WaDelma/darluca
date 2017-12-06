@@ -187,12 +187,36 @@ fn tokenize_if_else() {
 #[test]
 fn tokenize_function_declaration() {
     let mut interner = Interner::new();
+    let int = interner.intern("I32").unwrap();
+    let x = interner.intern("x").unwrap();
+    assert_tokens!(interner {
+        [x: I32,] -> I32 {
+            x
+        }
+    }{
+        Punctuation(Square(Open))
+        Identifier(x)
+        Punctuation(Colon)
+        Type(int)
+        Punctuation(Comma)
+        Punctuation(Square(Close))
+        Punctuation(Arrow(Right))
+        Type(int)
+        Punctuation(Curly(Open))
+        Identifier(x)
+        Punctuation(Curly(Close))
+    });
+}
+
+#[test]
+fn tokenize_function_declaration_and_calling() {
+    let mut interner = Interner::new();
     let fun = interner.intern("fun").unwrap();
     let int = interner.intern("I32").unwrap();
     let x = interner.intern("x").unwrap();
     let one = interner.intern("1").unwrap();
     assert_tokens!(interner {
-        let fun: (I32 -> I32) = [x,] -> {
+        let fun: (I32 -> I32) = [x: I32,] -> I32 {
             x
         }
         fun[1,]
@@ -208,9 +232,12 @@ fn tokenize_function_declaration() {
         Operator(Assignment)
         Punctuation(Square(Open))
         Identifier(x)
+        Punctuation(Colon)
+        Type(int)
         Punctuation(Comma)
         Punctuation(Square(Close))
         Punctuation(Arrow(Right))
+        Type(int)
         Punctuation(Curly(Open))
         Identifier(x)
         Punctuation(Curly(Close))

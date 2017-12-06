@@ -29,7 +29,10 @@ macro_rules! assert_parse {
             };
             let ast = ::parser::parse(tokens.borrow()).unwrap().1;
             let mut memory = Memory::new();
-            ::interpreter::interpret_scope(&ast.expressions, &mut memory, &mut $interner).unwrap();
+            match ::interpreter::interpret_scope(&ast.expressions, &mut memory, &mut $interner) {
+                Err(e) => panic!("Interpreting failed: {}", e), 
+                _ => {},
+            }
             let mut n = 1;
             $(
                 let mut expected = HashMap::new();
@@ -192,95 +195,127 @@ fn interpret_tuple_indexing() {
         let y: I32 = x[1]
     }{
         x => TyVal::unchecked(Tup(vec![
-                Int(1),
-                Invalid,
-                Int(3)
-            ]),
-            Tuple(vec![
-                Named(int),
-                Unknown,
-                Named(int),
-            ]))
+                    Int(1),
+                    Invalid,
+                    Int(3)
+                ]),
+                Tuple(vec![
+                    Named(int),
+                    Unknown,
+                    Named(int),
+                ])
+            )
         y => TyVal::unchecked(Int(2), Named(int))
     });
 }
 
-/*#[test]
+#[test]
 fn interpret_union() {
-    assert_parse!({
+    let mut interner = Interner::new();
+    let int = interner.intern("I32").unwrap();
+    assert_parse!(interner {
         let x: [I32|I32|I32|] = [1|_|_|]
     }{
-        x => Uni(0, Box::new(Int(1)), 3)
+        x => TyVal::unchecked(
+                Uni(0, Box::new(Int(1)), 3),
+                Union(vec![
+                    Named(int),
+                    Named(int),
+                    Named(int)]
+                )
+            )
     });
 }
 
 #[test]
 fn interpret_union_union() {
-    assert_parse!({
+    let mut interner = Interner::new();
+    let int = interner.intern("I32").unwrap();
+    assert_parse!(interner {
         let x: [[I32|I32|]|I32|I32|] = [[_|2|]|_|_|]
     }{
-        x => Uni(0, Box::new(
-                Uni(1, Box::new(
-                    Int(2)
-                ), 2)
-            ), 3)
+        x => TyVal::unchecked(
+                Uni(0, Box::new(
+                    Uni(1, Box::new(
+                        Int(2)
+                    ), 2)
+                ), 3),
+                Union(vec![
+                    Union(vec![
+                        Named(int),
+                        Named(int),
+                    ]),
+                    Named(int),
+                    Named(int),
+                ])
+            )
     });
 }
 
 #[test]
 fn interpret_scope() {
-    assert_parse!({
+    let mut interner = Interner::new();
+    let int = interner.intern("I32").unwrap();
+    assert_parse!(interner {
         let y: I32 = {
             let x: I32 = 1
             2
         }
     }{
-        y => Int(2)
+        y => TyVal::unchecked(Int(2), Named(int))
     }{
-        x => Int(1)
+        x => TyVal::unchecked(Int(1), Named(int))
     });
 }
 
 #[test]
 fn interpret_boolean() {
-    assert_parse!({
+    let mut interner = Interner::new();
+    let boolean = interner.intern("Bool").unwrap();
+    assert_parse!(interner {
         let x: Bool = true
         let y: Bool = false
     }{
-        x => Bool(true)
-        y => Bool(false)
+        x => TyVal::unchecked(Bool(true), Named(boolean))
+        y => TyVal::unchecked(Bool(false), Named(boolean))
     });
 }
 
 #[test]
 fn interpret_if() {
-    assert_parse!({
+    let mut interner = Interner::new();
+    let int = interner.intern("I32").unwrap();
+    assert_parse!(interner {
         let x: I32 = if true {
             1
         } else {
             2
         }
     }{
-        x => Int(1)
+        x => TyVal::unchecked(Int(1), Named(int))
     });
 }
 
 #[test]
 fn interpret_else() {
-    assert_parse!({
+    let mut interner = Interner::new();
+    let int = interner.intern("I32").unwrap();
+    assert_parse!(interner {
         let x: I32 = if false {
             1
         } else {
             2
         }
     }{
-        x => Int(2)
+        x => TyVal::unchecked(Int(2), Named(int))
     });
 }
 
 #[test]
 fn interpret_else_if() {
-    assert_parse!({
+    let mut interner = Interner::new();
+    let int = interner.intern("I32").unwrap();
+    assert_parse!(interner {
         let x: I32 = if false {
             1
         } else if false {
@@ -289,62 +324,70 @@ fn interpret_else_if() {
             3
         }
     }{
-        x => Int(3)
+        x => TyVal::unchecked(Int(3), Named(int))
     });
 }
 
 #[test]
 fn intepret_moving_into_scope() {
-    assert_parse!({
+    let mut interner = Interner::new();
+    let int = interner.intern("I32").unwrap();
+    assert_parse!(interner {
         let x: I32 = 1
         let y: I32 = {
             x
         }
     }{
-        x => Invalid
-        y => Int(1)
+        x => TyVal::unchecked(Invalid, Named(int))
+        y => TyVal::unchecked(Int(1), Named(int))
     });
 }
 
 #[test]
 fn interpret_function() {
-    assert_parse!({
-        let fun: (I32 -> I32) = [x,] -> {
+    let mut interner = Interner::new();
+    let int = interner.intern("I32").unwrap();
+    assert_parse!(interner {
+        let fun: (I32 -> I32) = [x: I32,] -> I32 {
             x
         }
-        let y = fun[1,]
+        let y: I32 = fun[1,]
     }{
-        fun => Invalid
-        y => Int(1)
+        fun => TyVal::unchecked(Invalid, Function(Box::new(Named(int)), Box::new(Named(int))))
+        y => TyVal::unchecked(Int(1), Named(int))
     });
 }
 
 #[test]
 fn interpret_closure() {
-    assert_parse!({
+    let mut interner = Interner::new();
+    let int = interner.intern("I32").unwrap();
+    assert_parse!(interner {
         let fun: ([,] -> I32) = {
             let x: I32 = 1
-            [,] -> {
+            [,] -> I32 {
                 x
             }
         }
         let y = fun[,]
     }{
-        fun => Invalid
-        y => Int(1)
+        fun => TyVal::unchecked(Invalid, Function(Box::new(Tuple(vec![])), Box::new(Named(int))))
+        y => TyVal::unchecked(Int(1), Named(int))
     }{
-        x => Invalid
+        x => TyVal::unchecked(Invalid, Named(int))
     });
 }
 
 
 #[test]
 fn interpret_closure_closure() {
-    assert_parse!({
+    let mut interner = Interner::new();
+    let int = interner.intern("I32").unwrap();
+    assert_parse!(interner {
         let fun: ([I32,] -> I32) = {
             let x: I32 = 1
-            [y,] -> {
-                let z = [,] -> {
+            [y: I32,] -> I32 {
+                let z = [,] -> I32 {
                     let x: [I32, I32,] = [2, y,]
                     (x[1] + x[0])
                 }
@@ -353,9 +396,9 @@ fn interpret_closure_closure() {
         }
         let y = fun[3,]
     }{
-        fun => Invalid
-        y => Int(6)
+        fun => TyVal::unchecked(Invalid, Function(Box::new(Named(int)), Box::new(Named(int))))
+        y => TyVal::unchecked(Int(6), Named(int))
     }{
-        x => Invalid
+        x => TyVal::unchecked(Invalid, Named(int))
     });
-}*/
+}
