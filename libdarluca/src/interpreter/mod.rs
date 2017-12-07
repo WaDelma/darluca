@@ -15,9 +15,11 @@ use interner::Interner;
 
 use self::InterpreterError::*;
 use self::repr::{bool_typed, int_typed, invalid, terminal, tuple_typed, union_typed, Ty,
-                 TypedValue, Value};
+                 Value};
 use self::repr::Value::*;
 use self::repr::mem::Memory;
+
+pub use self::repr::TypedValue;
 
 #[cfg(test)]
 mod test;

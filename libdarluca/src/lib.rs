@@ -12,4 +12,4 @@ extern crate symtern;
 pub mod lexer;
 pub mod parser;
 pub mod interpreter;
-mod interner;
+pub mod interner;

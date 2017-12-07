@@ -5,26 +5,22 @@ extern crate termcolor;
 extern crate failure;
 #[macro_use]
 extern crate failure_derive;
+extern crate nom;
 
 use clap::{Arg, App, ArgMatches};
 
 use termcolor::{StandardStream, ColorSpec, Color, WriteColor};
 use termcolor::ColorChoice as CC;
 
+use libdarluca::parser::parse;
+use libdarluca::interner::Interner;
+use libdarluca::lexer::Lexer;
+use libdarluca::interpreter::interpret;
+
 use std::io::prelude::*;
 use std::io::stdin;
 
 type Result<T> = ::std::result::Result<T, CliError>;
-
-arg_enum! {
-    #[derive(PartialEq, Debug, Clone, Copy)]
-    enum ColorChoice {
-        Always,
-        AlwaysAnsi,
-        Auto,
-        Never
-    }
-}
 
 #[derive(Debug, Fail)]
 enum CliError {
@@ -38,6 +34,15 @@ impl From<::std::io::Error> for CliError {
     }
 }
 
+arg_enum! {
+    #[derive(PartialEq, Debug, Clone, Copy)]
+    enum ColorChoice {
+        Always,
+        AlwaysAnsi,
+        Auto,
+        Never
+    }
+}
 
 impl Into<CC> for ColorChoice {
     fn into(self) -> CC {
@@ -54,7 +59,7 @@ impl Into<CC> for ColorChoice {
 const REPL_COMMANDS: [(&str, &str); 3] = [
     (":h", "In-repl help"),
     (":q", "Exit the repl"),
-    (":c", "Clears the repl session")
+    (":c", "Clears the code from the repl session")
 ];
 
 fn main() {
@@ -119,6 +124,14 @@ fn error_style() -> ColorSpec {
     let mut s = ColorSpec::new();
     s.set_fg(Some(Color::Red));
     s.set_intense(true);
+    s.set_bold(true);
+    s
+}
+
+fn note_style() -> ColorSpec {
+    let mut s = ColorSpec::new();
+    s.set_fg(Some(Color::Yellow));
+    s.set_intense(true);
     s
 }
 
@@ -161,6 +174,65 @@ fn print_help(args: &ArgMatches, s: &mut StandardStream) -> Result<()> {
     Ok(())
 }
 
+fn interpret_line(line: &str, out: &mut StandardStream, code: &mut Vec<String>) -> Result<bool> {
+    use nom::IResult::*;
+    let mut interner = Interner::new();
+    code.push(line.into());
+    let code_string = code.join("");
+    let tokens = match Lexer::new(&mut interner).tokenize(code_string.as_ref()).1 {
+        Done(_, tokens) => tokens,
+        Error(e) => {
+            out.write_color(&error_style(), "Lexing failed:\n")?;
+            write!(out, "{}\n", e)?;
+            code.pop();
+            return Ok(false);
+        },
+        Incomplete(n) => {
+            out.write_color(&error_style(), "Lexing needed more: ")?;
+            write!(out, "{:?}\n", n)?;
+            code.pop();
+            return Ok(false);
+        },
+    };
+    let ast = match parse(tokens.borrow()) {
+        Done(_, ast) => ast,
+        Error(e) => {
+            out.write_color(&error_style(), "Parsing failed:\n")?;
+            write!(out, "{}\n", e)?;
+            code.pop();
+            return Ok(false);
+        },
+        Incomplete(n) => {
+            out.write_color(&error_style(), "Parsing needed more: ")?;
+            write!(out, "{:?}\n", n)?;
+            code.pop();
+            return Ok(false);
+        },
+    };
+    match interpret(&ast, &mut interner) {
+        Ok(value) => {
+            match value.value().display(&mut interner) {
+                Ok(value) => {
+                    writeln!(out, "{}", value)?;
+                    Ok(true)
+                },
+                Err(e) => {
+                    out.write_color(&error_style(), "Interpreting failed:\n")?;
+                    write!(out, "{}\n", e)?;
+                    code.pop();
+                    Ok(false)
+                }
+            }
+        },
+        Err(e) => {
+            out.write_color(&error_style(), "Interpreting failed:\n")?;
+            write!(out, "{}\n", e)?;
+            code.pop();
+            Ok(false)
+        },
+    }
+}
+
 fn run(args: ArgMatches) -> Result<()> {
     let mut out = StandardStream::stdout(
         value_t!(args.value_of("color"), ColorChoice)
@@ -170,16 +242,25 @@ fn run(args: ArgMatches) -> Result<()> {
     let mut line = String::new();
     let stdin = stdin();
     let mut stdin = stdin.lock();
+    let mut history = vec![];
+    let mut code = vec![];
     loop {
         repl_symbol(&args, &mut out)?;
         stdin.read_line(&mut line)?;
-        match line.trim() {
-            ":q" => return Ok(()),
-            ":h" => print_help(&args, &mut out)?,
-            ":c" => out.write_color(&error_style(), "NOT IMPLEMENTED!\n")?,
-            _ => {},
+        history.push(line.clone());
+        if line.starts_with(":") {
+            match &line.trim()[1..] {
+                "q" => return Ok(()),
+                "h" => print_help(&args, &mut out)?,
+                "c" => {
+                    code.clear();
+                    out.write_color(&note_style(), "Cleared all code from the session\n")?
+                },
+                _ => out.write_color(&error_style(), "Unknown repl command\n")?,
+            }
+        } else {
+            interpret_line(&line, &mut out, &mut code)?;
         }
         line.clear();
     }
-    
 }
