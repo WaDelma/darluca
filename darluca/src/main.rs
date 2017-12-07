@@ -70,6 +70,10 @@ fn main() {
             .value_name("FILE")
             .help("Executes darluca file in the repl.")
             .index(1))
+        .arg(Arg::with_name("plain")
+            .short("p")
+            .long("plain")
+            .help("Determines if the repl uses plain formating without fancy unicode symbols."))
         .arg(Arg::with_name("symbol")
             .short("s")
             .long("symbol")
@@ -131,21 +135,27 @@ fn title_style() -> ColorSpec {
     s
 }
 
+fn fancy_plain<'a>(args: &ArgMatches, fancy: &'a str, plain: &'a str) -> &'a str {
+    if args.is_present("plain") {
+        plain
+    } else {
+        fancy
+    }
+}
+
 fn repl_symbol(args: &ArgMatches, s: &mut StandardStream) -> Result<()> {
     s.with_color(highlight_style(), |s| {
-        s.write(args.value_of("symbol").unwrap_or_else(|| "🍄").as_ref())?;
-        Ok(write!(s, "⟩")?)
+        Ok(s.write(args.value_of("symbol").unwrap_or_else(|| fancy_plain(args, "𝔇𝔞⟩", "Da>")).as_ref())?)
     })?;
-    write!(s, " ")?;
     Ok(s.flush()?)
 }
 
-fn print_help(s: &mut StandardStream) -> Result<()> {
+fn print_help(args: &ArgMatches, s: &mut StandardStream) -> Result<()> {
     let hl = highlight_style();
-    s.write_color(&hl, " ❘〃")?;
+    s.write_color(&hl, fancy_plain(args, " ❘〃", " |//"))?;
     s.write_color(&title_style(), "HELP\n")?;
     for &(c, h) in REPL_COMMANDS.iter() {
-        s.write_color(&hl, " ❘")?;
+        s.write_color(&hl, fancy_plain(args, " ❘", " |"))?;
         writeln!(s, "  {}  {}", c, h)?;
     }
     Ok(())
@@ -165,7 +175,7 @@ fn run(args: ArgMatches) -> Result<()> {
         stdin.read_line(&mut line)?;
         match line.trim() {
             ":q" => return Ok(()),
-            ":h" => print_help(&mut out)?,
+            ":h" => print_help(&args, &mut out)?,
             ":c" => out.write_color(&error_style(), "NOT IMPLEMENTED!\n")?,
             _ => {},
         }
