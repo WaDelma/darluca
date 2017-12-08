@@ -180,7 +180,15 @@ fn interpret_line(line: &str, out: &mut StandardStream, code: &mut Vec<String>) 
     code.push(line.into());
     let code_string = code.join("");
     let tokens = match Lexer::new(&mut interner).tokenize(code_string.as_ref()).1 {
-        Done(_, tokens) => tokens,
+        Done(left, tokens) => if left.is_empty() {
+            tokens
+        } else {
+            out.write_color(&error_style(), "Lexing failed:\n")?;
+            write!(out, "Left: {}\n", String::from_utf8_lossy(&left[..(left.len() - 1)]))?;
+            write!(out, "Tokens: {:#?}\n", tokens.tokens)?;
+            code.pop();
+            return Ok(false);
+        },
         Error(e) => {
             out.write_color(&error_style(), "Lexing failed:\n")?;
             write!(out, "{}\n", e)?;
@@ -195,7 +203,15 @@ fn interpret_line(line: &str, out: &mut StandardStream, code: &mut Vec<String>) 
         },
     };
     let ast = match parse(tokens.borrow()) {
-        Done(_, ast) => ast,
+        Done(left, ast) => if left.tokens.is_empty() {
+            ast
+        } else {
+            out.write_color(&error_style(), "Parsing failed:\n")?;
+            write!(out, "Left: {:#?}\n", left.tokens)?;
+            write!(out, "Ast: {:#?}\n", ast.expressions)?;
+            code.pop();
+            return Ok(false);
+        }
         Error(e) => {
             out.write_color(&error_style(), "Parsing failed:\n")?;
             write!(out, "{}\n", e)?;
@@ -212,9 +228,19 @@ fn interpret_line(line: &str, out: &mut StandardStream, code: &mut Vec<String>) 
     match interpret(&ast, &mut interner) {
         Ok(value) => {
             match value.value().display(&mut interner) {
-                Ok(value) => {
-                    writeln!(out, "{}", value)?;
-                    Ok(true)
+                Ok(val) => {
+                    match value.ty().display(&mut interner) {
+                        Ok(ty) => {
+                            writeln!(out, "{}: {}", val, ty)?;
+                            Ok(true)
+                        },
+                        Err(e) => {
+                            out.write_color(&error_style(), "Interpreting failed:\n")?;
+                            write!(out, "{}\n", e)?;
+                            code.pop();
+                            Ok(false)
+                        }
+                    }
                 },
                 Err(e) => {
                     out.write_color(&error_style(), "Interpreting failed:\n")?;
