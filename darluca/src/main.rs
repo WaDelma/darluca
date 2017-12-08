@@ -5,7 +5,11 @@ extern crate termcolor;
 extern crate failure;
 #[macro_use]
 extern crate failure_derive;
+// TODO: Remove nom and symtern from repl dependencies.
 extern crate nom;
+extern crate symtern;
+
+use symtern::prelude::*;
 
 use clap::{Arg, App, ArgMatches};
 
@@ -15,7 +19,9 @@ use termcolor::ColorChoice as CC;
 use libdarluca::parser::parse;
 use libdarluca::interner::Interner;
 use libdarluca::lexer::Lexer;
-use libdarluca::interpreter::interpret;
+use libdarluca::parser::ast::Identifier;
+use libdarluca::interpreter::interpret_noscope;
+use libdarluca::interpreter::{Memory, TypedValue};
 
 use std::io::prelude::*;
 use std::io::stdin;
@@ -56,10 +62,11 @@ impl Into<CC> for ColorChoice {
     }
 }
 
-const REPL_COMMANDS: [(&str, &str); 3] = [
+const REPL_COMMANDS: [(&str, &str); 4] = [
     (":h", "In-repl help"),
     (":q", "Exit the repl"),
-    (":c", "Clears the code from the repl session")
+    (":c", "Clears the code from the repl session"),
+    (":t <variable>", "Tells the type of the variable"),
 ];
 
 fn main() {
@@ -174,31 +181,26 @@ fn print_help(args: &ArgMatches, s: &mut StandardStream) -> Result<()> {
     Ok(())
 }
 
-fn interpret_line(line: &str, out: &mut StandardStream, code: &mut Vec<String>) -> Result<bool> {
+// TODO: Instead this ugly thing there should be API for doing requests where one of them is adding code to the session.
+fn interpret_line(line: &str, out: &mut StandardStream, memory: &mut Memory<TypedValue>, interner: &mut Interner) -> Result<bool> {
     use nom::IResult::*;
-    let mut interner = Interner::new();
-    code.push(line.into());
-    let code_string = code.join("");
-    let tokens = match Lexer::new(&mut interner).tokenize(code_string.as_ref()).1 {
+    let tokens = match Lexer::new(interner).tokenize(line.as_ref()).1 {
         Done(left, tokens) => if left.is_empty() {
             tokens
         } else {
             out.write_color(&error_style(), "Lexing failed:\n")?;
             write!(out, "Left: {}\n", String::from_utf8_lossy(&left[..(left.len() - 1)]))?;
             write!(out, "Tokens: {:#?}\n", tokens.tokens)?;
-            code.pop();
             return Ok(false);
         },
         Error(e) => {
             out.write_color(&error_style(), "Lexing failed:\n")?;
             write!(out, "{}\n", e)?;
-            code.pop();
             return Ok(false);
         },
         Incomplete(n) => {
             out.write_color(&error_style(), "Lexing needed more: ")?;
             write!(out, "{:?}\n", n)?;
-            code.pop();
             return Ok(false);
         },
     };
@@ -209,27 +211,24 @@ fn interpret_line(line: &str, out: &mut StandardStream, code: &mut Vec<String>) 
             out.write_color(&error_style(), "Parsing failed:\n")?;
             write!(out, "Left: {:#?}\n", left.tokens)?;
             write!(out, "Ast: {:#?}\n", ast.expressions)?;
-            code.pop();
             return Ok(false);
         }
         Error(e) => {
             out.write_color(&error_style(), "Parsing failed:\n")?;
             write!(out, "{}\n", e)?;
-            code.pop();
             return Ok(false);
         },
         Incomplete(n) => {
             out.write_color(&error_style(), "Parsing needed more: ")?;
             write!(out, "{:?}\n", n)?;
-            code.pop();
             return Ok(false);
         },
     };
-    match interpret(&ast, &mut interner) {
+    match interpret_noscope(&ast.expressions, memory, interner) {
         Ok(value) => {
-            match value.value().display(&mut interner) {
+            match value.value().display(interner) {
                 Ok(val) => {
-                    match value.ty().display(&mut interner) {
+                    match value.ty().display(interner) {
                         Ok(ty) => {
                             writeln!(out, "{}: {}", val, ty)?;
                             Ok(true)
@@ -237,7 +236,6 @@ fn interpret_line(line: &str, out: &mut StandardStream, code: &mut Vec<String>) 
                         Err(e) => {
                             out.write_color(&error_style(), "Interpreting failed:\n")?;
                             write!(out, "{}\n", e)?;
-                            code.pop();
                             Ok(false)
                         }
                     }
@@ -245,7 +243,6 @@ fn interpret_line(line: &str, out: &mut StandardStream, code: &mut Vec<String>) 
                 Err(e) => {
                     out.write_color(&error_style(), "Interpreting failed:\n")?;
                     write!(out, "{}\n", e)?;
-                    code.pop();
                     Ok(false)
                 }
             }
@@ -253,7 +250,6 @@ fn interpret_line(line: &str, out: &mut StandardStream, code: &mut Vec<String>) 
         Err(e) => {
             out.write_color(&error_style(), "Interpreting failed:\n")?;
             write!(out, "{}\n", e)?;
-            code.pop();
             Ok(false)
         },
     }
@@ -269,7 +265,9 @@ fn run(args: ArgMatches) -> Result<()> {
     let stdin = stdin();
     let mut stdin = stdin.lock();
     let mut history = vec![];
-    let mut code = vec![];
+    let mut memory = Memory::<TypedValue>::new();
+    memory.start_scope();
+    let mut interner = Interner::new();
     loop {
         repl_symbol(&args, &mut out)?;
         stdin.read_line(&mut line)?;
@@ -279,13 +277,20 @@ fn run(args: ArgMatches) -> Result<()> {
                 "q" => return Ok(()),
                 "h" => print_help(&args, &mut out)?,
                 "c" => {
-                    code.clear();
+                    memory.clear();
+                    memory.start_scope();
                     out.write_color(&note_style(), "Cleared all code from the session\n")?
+                },
+                l if l.starts_with("t ") => {
+                    let l = &l[2..];
+                    // TODO: This is so bad code.
+                    let val = memory.get(&Identifier(interner.intern(l).unwrap())).unwrap();
+                    out.write(format!("{}\n", val.ty().display(&interner).unwrap()).as_ref())?;
                 },
                 _ => out.write_color(&error_style(), "Unknown repl command\n")?,
             }
         } else {
-            interpret_line(&line, &mut out, &mut code)?;
+            interpret_line(&line, &mut out, &mut memory, &mut interner)?;
         }
         line.clear();
     }

@@ -39,6 +39,10 @@ impl<D> Memory<D> {
         self.scopes.last_mut().and_then(|l| l.insert(i, v))
     }
 
+    pub fn clear(&mut self) {
+        self.scopes.clear();
+    }
+
     pub fn scope<F, T>(&mut self, f: F) -> T
     where
         F: FnOnce(&mut Self) -> T,
@@ -50,6 +54,11 @@ impl<D> Memory<D> {
         self.used_scopes
             .push(_used_scope.expect("We pushed scope so this should be always valid."));
         result
+    }
+
+    /// Scope created by this method can only be cleared.
+    pub fn start_scope(&mut self) {
+        self.scopes.push(HashMap::new());
     }
 }
 

@@ -17,9 +17,9 @@ use self::InterpreterError::*;
 use self::repr::{bool_typed, int_typed, invalid, terminal, tuple_typed, union_typed, Ty,
                  Value};
 use self::repr::Value::*;
-use self::repr::mem::Memory;
 
 pub use self::repr::TypedValue;
+pub use self::repr::mem::Memory;
 
 #[cfg(test)]
 mod test;
@@ -47,6 +47,18 @@ impl From<::symtern::Error> for InterpreterError {
 
 pub fn interpret(ast: &Ast, interner: &mut Interner) -> Result<TypedValue> {
     interpret_scope(&ast.expressions, &mut Memory::new(), interner)
+}
+
+pub fn interpret_noscope(
+    expressions: &[Expression],
+    memory: &mut Memory<TypedValue>,
+    interner: &mut Interner,
+) -> Result<TypedValue> {
+    let mut value = terminal();
+    for e in expressions {
+        value = execute(e, memory, interner)?;
+    }
+    Ok(value)
 }
 
 fn interpret_scope(
