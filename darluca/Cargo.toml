@@ -8,6 +8,8 @@ darluca_lib = {path = "../darluca_lib"}
 clap = "2.28.0"
 nom = "3.2.0"
 symtern = "0.1.0"
+termion = "1.5.1"
 termcolor = "0.3"
 failure = "0.1.1"
 failure_derive = "0.1.1"
+unicode-width = "0.1.4"

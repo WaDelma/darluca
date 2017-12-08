@@ -1,20 +1,26 @@
 extern crate darluca_lib;
 #[macro_use]
 extern crate clap;
-extern crate termcolor;
+extern crate termion;
 extern crate failure;
 #[macro_use]
 extern crate failure_derive;
+extern crate unicode_width;
 // TODO: Remove nom and symtern from repl dependencies.
 extern crate nom;
 extern crate symtern;
+
+
+use unicode_width::UnicodeWidthStr;
 
 use symtern::prelude::*;
 
 use clap::{Arg, App, ArgMatches};
 
-use termcolor::{StandardStream, ColorSpec, Color, WriteColor};
-use termcolor::ColorChoice as CC;
+use termion::{color, cursor, clear, style, terminal_size};
+use termion::event::Key;
+use termion::input::TermRead;
+use termion::raw::IntoRawMode;
 
 use darluca_lib::parser::parse;
 use darluca_lib::interner::Interner;
@@ -23,10 +29,14 @@ use darluca_lib::parser::ast::Identifier;
 use darluca_lib::interpreter::interpret_noscope;
 use darluca_lib::interpreter::{Memory, TypedValue};
 
-use std::io::prelude::*;
-use std::io::stdin;
+use std::io::{Write, stdout, stdin};
+use std::fmt;
+
+use history::History;
 
 type Result<T> = ::std::result::Result<T, CliError>;
+
+mod history;
 
 #[derive(Debug, Fail)]
 enum CliError {
@@ -50,18 +60,6 @@ arg_enum! {
     }
 }
 
-impl Into<CC> for ColorChoice {
-    fn into(self) -> CC {
-        use self::ColorChoice::*;
-        match self {
-            Always => CC::Always,
-            AlwaysAnsi => CC::AlwaysAnsi,
-            Auto => CC::Auto,
-            Never => CC::Never,
-        }
-    }
-}
-
 const REPL_COMMANDS: [(&str, &str); 4] = [
     (":h", "In-repl help"),
     (":q", "Exit the repl"),
@@ -70,7 +68,7 @@ const REPL_COMMANDS: [(&str, &str); 4] = [
 ];
 
 fn main() {
-    let mut about = String::from(" 🍄 The repl for darluca.\n\nCOMMANDS:\n");
+    let mut about = String::from(" 🍄 The repl for Darluca.\n\nCOMMANDS:\n");
     for &(c, h) in REPL_COMMANDS.iter() {
         about.push_str(&format!("    {}    {}\n", c, h));
     }
@@ -102,57 +100,76 @@ fn main() {
     run(matches).unwrap();
 }
 
-trait WithColor {
-    fn with_color<F, T>(&mut self, c: ColorSpec, f: F) -> Result<T>
-        where F: Fn(&mut Self) -> Result<T>;
-    fn write_color(&mut self, c: &ColorSpec, s: &str) -> Result<()>;
+#[derive(Clone, Copy)]
+struct Style<C: color::Color, B: color::Color, S> {
+    fg: color::Fg<C>,
+    bg: color::Bg<B>,
+    style: S,
 }
 
-impl WithColor for StandardStream {
-    fn with_color<F, T>(&mut self, c: ColorSpec, f: F) -> Result<T>
-        where F: Fn(&mut Self) -> Result<T>
-    {
-        self.set_color(&c)?;
-        let result = f(self);
-        self.set_color(&ColorSpec::new())?;
-        result
+impl<C: color::Color, B: color::Color, S> Style<C, B, S> {
+    fn new(c: C, b: B, s: S) -> Self {
+        Style {
+            fg: color::Fg(c),
+            bg: color::Bg(b),
+            style: s,
+        }
+    }
+}
+
+impl<C: color::Color, B: color::Color, S: fmt::Display> fmt::Display for Style<C, B, S> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}{}{}", self.style, self.fg, self.bg)
+    }
+}
+
+trait WithColor {
+    fn cwrite<C: color::Color, B: color::Color, S: fmt::Display>(&mut self, c: Style<C, B, S>, s: &str) -> Result<()>;
+    fn cwriteln<C: color::Color, B: color::Color, S: fmt::Display>(&mut self, c: Style<C, B, S>, s: &str) -> Result<()>;
+}
+
+impl<W: Write> WithColor for W {
+
+    fn cwrite<C: color::Color, B: color::Color, S: fmt::Display>(&mut self, c: Style<C, B, S>, s: &str) -> Result<()> {
+        write!(self, "{}", c)?;
+        let (_, height) = terminal_size()?;
+        let result = self.write(s.replace("\n", &format!("\n{}", cursor::Goto(1, height))).as_ref());
+        write!(self, "{}", clear_style())?;
+        self.flush()?;
+        result?;
+        Ok(())
     }
 
-    fn write_color(&mut self, c: &ColorSpec, s: &str) -> Result<()> {
-        self.set_color(c)?;
-        let result = self.write(s.as_ref());
-        self.set_color(&ColorSpec::new())?;
+    fn cwriteln<C: color::Color, B: color::Color, S: fmt::Display>(&mut self, c: Style<C, B, S>, s: &str) -> Result<()> {
+        write!(self, "{}", c)?;
+        let (_, height) = terminal_size()?;
+        let result = self.write(s.replace("\n", &format!("\n{}", cursor::Goto(1, height))).as_ref());
+        write!(self, "{}", clear_style())?;
+        write!(self, "\n{}", cursor::Goto(1, height))?;
+        self.flush()?;
         result?;
         Ok(())
     }
 }
 
-fn error_style() -> ColorSpec {
-    let mut s = ColorSpec::new();
-    s.set_fg(Some(Color::Red));
-    s.set_intense(true);
-    s.set_bold(true);
-    s
+fn clear_style() -> Style<color::Reset, color::Reset, style::Reset> {
+    Style::new(color::Reset, color::Reset, style::Reset)
 }
 
-fn note_style() -> ColorSpec {
-    let mut s = ColorSpec::new();
-    s.set_fg(Some(Color::Yellow));
-    s.set_intense(true);
-    s
+fn error_style() -> Style<color::Red, color::Reset, style::Bold> {
+    Style::new(color::Red, color::Reset, style::Bold)
 }
 
-fn highlight_style() -> ColorSpec {
-    let mut s = ColorSpec::new();
-    s.set_fg(Some(Color::Green));
-    s
+fn note_style() -> Style<color::Yellow, color::Reset, style::Reset> {
+    Style::new(color::Yellow, color::Reset, style::Reset)
 }
 
-fn title_style() -> ColorSpec {
-    let mut s = ColorSpec::new();
-    s.set_fg(Some(Color::Magenta));
-    s.set_bold(true);
-    s
+fn highlight_style() -> Style<color::Green, color::Reset, style::Reset> {
+    Style::new(color::Green, color::Reset, style::Reset)
+}
+
+fn title_style() -> Style<color::Magenta, color::Reset, style::Bold> {
+    Style::new(color::Magenta, color::Reset, style::Bold)
 }
 
 fn fancy_plain<'a>(args: &ArgMatches, fancy: &'a str, plain: &'a str) -> &'a str {
@@ -163,44 +180,47 @@ fn fancy_plain<'a>(args: &ArgMatches, fancy: &'a str, plain: &'a str) -> &'a str
     }
 }
 
-fn repl_symbol(args: &ArgMatches, s: &mut StandardStream) -> Result<()> {
-    s.with_color(highlight_style(), |s| {
-        Ok(s.write(args.value_of("symbol").unwrap_or_else(|| fancy_plain(args, "𝔇𝔞⟩", "Da>")).as_ref())?)
-    })?;
-    Ok(s.flush()?)
+fn repl_symbol<'a>(args: &'a ArgMatches) -> &'a str {
+    args.value_of("symbol").unwrap_or_else(|| fancy_plain(args, "𝔇𝔞⟩", "Da>"))
 }
 
-fn print_help(args: &ArgMatches, s: &mut StandardStream) -> Result<()> {
+fn print_repl_symbol<W: Write>(s: &mut W, args: &ArgMatches) -> Result<()> {
+    // TODO: Why doesn't coloring work here?
+    s.cwrite(highlight_style(), repl_symbol(args))?;
+    Ok(())
+}
+
+fn print_help<W: Write>(s: &mut W, args: &ArgMatches) -> Result<()> {
     let hl = highlight_style();
-    s.write_color(&hl, fancy_plain(args, " ❘〃", " |//"))?;
-    s.write_color(&title_style(), "HELP\n")?;
+    s.cwrite(hl, fancy_plain(args, " ❘〃", " |//"))?;
+    s.cwriteln(title_style(), "HELP")?;
     for &(c, h) in REPL_COMMANDS.iter() {
-        s.write_color(&hl, fancy_plain(args, " ❘", " |"))?;
-        writeln!(s, "  {}  {}", c, h)?;
+        s.cwrite(hl, fancy_plain(args, " ❘", " |"))?;
+        s.cwriteln(clear_style(), &format!("  {}  {}", c, h))?;
     }
     Ok(())
 }
 
 // TODO: Instead this ugly thing there should be API for doing requests where one of them is adding code to the session.
-fn interpret_line(line: &str, out: &mut StandardStream, memory: &mut Memory<TypedValue>, interner: &mut Interner) -> Result<bool> {
+fn interpret_line<W: Write>(line: &str, out: &mut W, memory: &mut Memory<TypedValue>, interner: &mut Interner) -> Result<bool> {
     use nom::IResult::*;
     let tokens = match Lexer::new(interner).tokenize(line.as_ref()).1 {
         Done(left, tokens) => if left.is_empty() {
             tokens
         } else {
-            out.write_color(&error_style(), "Lexing failed:\n")?;
-            write!(out, "Left: {}\n", String::from_utf8_lossy(&left[..(left.len() - 1)]))?;
-            write!(out, "Tokens: {:#?}\n", tokens.tokens)?;
+            out.cwriteln(error_style(), "Lexing failed:")?;
+            out.cwriteln(clear_style(), &format!("Left: {}", String::from_utf8_lossy(&left[..(left.len() - 1)])))?;
+            out.cwriteln(clear_style(), &format!("Tokens: {:#?}", tokens.tokens))?;
             return Ok(false);
         },
         Error(e) => {
-            out.write_color(&error_style(), "Lexing failed:\n")?;
-            write!(out, "{}\n", e)?;
+            out.cwriteln(error_style(), "Lexing failed:")?;
+            out.cwriteln(clear_style(), &format!("{}", e))?;
             return Ok(false);
         },
         Incomplete(n) => {
-            out.write_color(&error_style(), "Lexing needed more: ")?;
-            write!(out, "{:?}\n", n)?;
+            out.cwrite(error_style(), "Lexing needed more: ")?;
+            out.cwriteln(clear_style(), &format!("{:?}", n))?;
             return Ok(false);
         },
     };
@@ -208,19 +228,19 @@ fn interpret_line(line: &str, out: &mut StandardStream, memory: &mut Memory<Type
         Done(left, ast) => if left.tokens.is_empty() {
             ast
         } else {
-            out.write_color(&error_style(), "Parsing failed:\n")?;
-            write!(out, "Left: {:#?}\n", left.tokens)?;
-            write!(out, "Ast: {:#?}\n", ast.expressions)?;
+            out.cwriteln(error_style(), "Parsing failed:")?;
+            out.cwriteln(clear_style(), &format!("Left: {:#?}", left.tokens))?;
+            out.cwriteln(clear_style(), &format!("Ast: {:#?}", ast.expressions))?;
             return Ok(false);
         }
         Error(e) => {
-            out.write_color(&error_style(), "Parsing failed:\n")?;
-            write!(out, "{}\n", e)?;
+            out.cwriteln(error_style(), "Parsing failed:")?;
+            out.cwriteln(clear_style(), &format!("{}", e))?;
             return Ok(false);
         },
         Incomplete(n) => {
-            out.write_color(&error_style(), "Parsing needed more: ")?;
-            write!(out, "{:?}\n", n)?;
+            out.cwrite(error_style(), "Parsing needed more: ")?;
+            out.cwriteln(clear_style(), &format!("{:?}", n))?;
             return Ok(false);
         },
     };
@@ -230,68 +250,115 @@ fn interpret_line(line: &str, out: &mut StandardStream, memory: &mut Memory<Type
                 Ok(val) => {
                     match value.ty().display(interner) {
                         Ok(ty) => {
-                            writeln!(out, "{}: {}", val, ty)?;
+                            out.cwriteln(clear_style(), &format!("{}: {}", val, ty))?;
                             Ok(true)
                         },
                         Err(e) => {
-                            out.write_color(&error_style(), "Interpreting failed:\n")?;
-                            write!(out, "{}\n", e)?;
+                            out.cwriteln(error_style(), "Interpreting failed:")?;
+                            out.cwriteln(clear_style(), &format!("{}", e))?;
                             Ok(false)
                         }
                     }
                 },
                 Err(e) => {
-                    out.write_color(&error_style(), "Interpreting failed:\n")?;
-                    write!(out, "{}\n", e)?;
+                    out.cwriteln(error_style(), "Interpreting failed:")?;
+                    out.cwriteln(clear_style(), &format!("{}", e))?;
                     Ok(false)
                 }
             }
         },
         Err(e) => {
-            out.write_color(&error_style(), "Interpreting failed:\n")?;
-            write!(out, "{}\n", e)?;
+            out.cwriteln(error_style(), "Interpreting failed:")?;
+            out.cwriteln(clear_style(), &format!("{}", e))?;
             Ok(false)
         },
     }
 }
 
 fn run(args: ArgMatches) -> Result<()> {
-    let mut out = StandardStream::stdout(
-        value_t!(args.value_of("color"), ColorChoice)
-            .unwrap_or_else(|_| ColorChoice::Auto)
-            .into()
-    );
-    let mut line = String::new();
     let stdin = stdin();
-    let mut stdin = stdin.lock();
-    let mut history = vec![];
+    let mut out = stdout().into_raw_mode()?;
+
+    let mut history = History::new();
     let mut memory = Memory::<TypedValue>::new();
     memory.start_scope();
     let mut interner = Interner::new();
-    loop {
-        repl_symbol(&args, &mut out)?;
-        stdin.read_line(&mut line)?;
-        history.push(line.clone());
-        if line.starts_with(":") {
-            match &line.trim()[1..] {
-                "q" => return Ok(()),
-                "h" => print_help(&args, &mut out)?,
-                "c" => {
-                    memory.clear();
-                    memory.start_scope();
-                    out.write_color(&note_style(), "Cleared all code from the session\n")?
-                },
-                l if l.starts_with("t ") => {
-                    let l = &l[2..];
-                    // TODO: This is so bad code.
-                    let val = memory.get(&Identifier(interner.intern(l).unwrap())).unwrap();
-                    out.write(format!("{}\n", val.ty().display(&interner).unwrap()).as_ref())?;
-                },
-                _ => out.write_color(&error_style(), "Unknown repl command\n")?,
-            }
-        } else {
-            interpret_line(&line, &mut out, &mut memory, &mut interner)?;
+    out.cwrite(Style::new(color::LightBlue, color::Reset, style::Bold), &format!("{}", fancy_plain(&args, "🍄", "~")))?;
+    out.cwriteln(Style::new(color::LightGreen, color::Reset, style::Bold), &format!(" Welcome to the repl for Darluca {}!", crate_version!()))?;
+    print_repl_symbol(&mut out, &args)?;
+    for c in stdin.keys() {
+        use self::Key::*;
+        match c? {
+            Char('\n') => {
+                out.cwriteln(clear_style(), "")?;
+                if history.current().starts_with(":") {
+                    match &history.current().trim()[1..] {
+                        "q" => return Ok(()),
+                        "h" => print_help(&mut out, &args)?,
+                        "c" => {
+                            memory.clear();
+                            memory.start_scope();
+                            out.cwriteln(note_style(), "Cleared all code from the session")?
+                        },
+                        l if l.starts_with("t ") => {
+                            let l = &l[2..];
+                            // TODO: This is so bad code.
+                            let val = memory.get(&Identifier(interner.intern(l).unwrap())).unwrap();
+                            out.cwriteln(clear_style(), &format!("{}", val.ty().display(&interner).unwrap()))?;
+                        },
+                        _ => out.cwriteln(error_style(), "Unknown repl command")?,
+                    }
+                } else {
+                    interpret_line(history.current(), &mut out, &mut memory, &mut interner)?;
+                }
+                history.proceed();
+                print_repl_symbol(&mut out, &args)?;
+            },
+            Char(c) => {
+                history.write(c);
+                write!(out, "{}", c)?;
+                out.flush()?;
+            },
+            Down => if history.go_forwards() {
+                update_pos(&mut out, 0, &args)?;
+                out.cwrite(clear_style(), &format!("{}", history.current()))?;
+                out.flush()?;
+            },
+            Up => if history.go_backwards() {
+                update_pos(&mut out, 0, &args)?;
+                out.cwrite(clear_style(), &format!("{}", history.current()))?;
+                out.flush()?;
+            },
+            Backspace => if history.erase().is_some() {
+                update_pos(&mut out, history.current().width(), &args)?;
+                out.flush()?;
+            },
+            PageUp => {
+                history.to_history();
+                update_pos(&mut out, 0, &args)?;
+                out.cwrite(clear_style(), &format!("{}", history.current()))?;
+                out.flush()?;
+            },
+            PageDown => {
+                history.to_future();
+                update_pos(&mut out, 0, &args)?;
+                out.cwrite(clear_style(), &format!("{}", history.current()))?;
+                out.flush()?;
+            },
+            Esc => break,
+            Ctrl(c) => match c {
+                'c' => break,
+                _ => {},
+            },
+            _ => {},
         }
-        line.clear();
     }
+    Ok(())
+}
+
+fn update_pos<W: Write>(out: &mut W, offset: usize, args: &ArgMatches) -> Result<()> {
+    let (_, height) = terminal_size()?;
+    let place = repl_symbol(&args).width() + 1 + offset;
+    write!(out, "{}{}", cursor::Goto(place as u16, height), clear::AfterCursor)?;
+    Ok(())
 }
