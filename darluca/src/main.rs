@@ -1,4 +1,4 @@
-extern crate libdarluca;
+extern crate darluca_lib;
 #[macro_use]
 extern crate clap;
 extern crate termcolor;
@@ -16,12 +16,12 @@ use clap::{Arg, App, ArgMatches};
 use termcolor::{StandardStream, ColorSpec, Color, WriteColor};
 use termcolor::ColorChoice as CC;
 
-use libdarluca::parser::parse;
-use libdarluca::interner::Interner;
-use libdarluca::lexer::Lexer;
-use libdarluca::parser::ast::Identifier;
-use libdarluca::interpreter::interpret_noscope;
-use libdarluca::interpreter::{Memory, TypedValue};
+use darluca_lib::parser::parse;
+use darluca_lib::interner::Interner;
+use darluca_lib::lexer::Lexer;
+use darluca_lib::parser::ast::Identifier;
+use darluca_lib::interpreter::interpret_noscope;
+use darluca_lib::interpreter::{Memory, TypedValue};
 
 use std::io::prelude::*;
 use std::io::stdin;

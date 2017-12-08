@@ -1,6 +1,6 @@
 [package]
 authors = ["Wadelma <delma@del.ma>"]
-name = "libdarluca"
+name = "darluca_lib"
 version = "0.1.0"
 
 [dependencies]

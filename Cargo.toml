@@ -1,2 +1,2 @@
 [workspace]
-members = ["libdarluca", "darluca"]
+members = ["darluca_lib", "darluca_serv", "darluca"]
