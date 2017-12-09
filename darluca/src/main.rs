@@ -16,7 +16,7 @@ use symtern::prelude::*;
 
 use clap::{Arg, App, ArgMatches};
 
-use termion::{color, cursor, clear, style};
+use termion::{cursor, clear};
 use termion::event::Key;
 use termion::input::TermRead;
 use termion::raw::IntoRawMode;
@@ -29,17 +29,18 @@ use darluca_lib::interpreter::interpret_noscope;
 use darluca_lib::interpreter::{Memory, TypedValue};
 
 use std::io::{Write, stdout, stdin};
-use std::fmt;
 use std::iter::repeat;
 
 use history::History;
+use style::{WithColor, clear_style, error_style, note_style, highlight_style, info_style, logo_theme, welcome_theme};
 
 type Result<T> = ::std::result::Result<T, CliError>;
 
 mod history;
+mod style;
 
 #[derive(Debug, Fail)]
-enum CliError {
+pub enum CliError {
     #[fail(display = "IO error occured: {}", _0)]
     IoError(#[cause] ::std::io::Error)
 }
@@ -103,80 +104,6 @@ fn main() {
     run(matches).unwrap();
 }
 
-#[derive(Clone, Copy)]
-struct Style<C: color::Color, B: color::Color, S> {
-    fg: color::Fg<C>,
-    bg: color::Bg<B>,
-    style: S,
-}
-
-impl<C: color::Color, B: color::Color, S> Style<C, B, S> {
-    fn new(c: C, b: B, s: S) -> Self {
-        Style {
-            fg: color::Fg(c),
-            bg: color::Bg(b),
-            style: s,
-        }
-    }
-}
-
-impl<C: color::Color, B: color::Color, S: fmt::Display> fmt::Display for Style<C, B, S> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}{}{}", self.style, self.fg, self.bg)
-    }
-}
-
-trait WithColor {
-    fn cwrite<C: color::Color, B: color::Color, S: fmt::Display>(&mut self, c: Style<C, B, S>, s: &str) -> Result<()>;
-    fn cwriteln<C: color::Color, B: color::Color, S: fmt::Display>(&mut self, c: Style<C, B, S>, s: &str) -> Result<()>;
-}
-
-impl<W: Write> WithColor for W {
-
-    fn cwrite<C: color::Color, B: color::Color, S: fmt::Display>(&mut self, c: Style<C, B, S>, s: &str) -> Result<()> {
-        write!(self, "{}", c)?;
-        let result = self.write(s.replace("\n", &format!("\n{}", cursor::Left(!0))).as_ref());
-        write!(self, "{}", clear_style())?;
-        self.flush()?;
-        result?;
-        Ok(())
-    }
-
-    fn cwriteln<C: color::Color, B: color::Color, S: fmt::Display>(&mut self, c: Style<C, B, S>, s: &str) -> Result<()> {
-        write!(self, "{}", c)?;
-        let result = self.write(s.replace("\n", &format!("\n{}", cursor::Left(!0))).as_ref());
-        write!(self, "{}", clear_style())?;
-        write!(self, "\n{}", cursor::Left(!0))?;
-        self.flush()?;
-        result?;
-        Ok(())
-    }
-}
-
-fn clear_style() -> Style<color::Reset, color::Reset, style::Reset> {
-    Style::new(color::Reset, color::Reset, style::Reset)
-}
-
-fn error_style() -> Style<color::Red, color::Reset, style::Bold> {
-    Style::new(color::Red, color::Reset, style::Bold)
-}
-
-fn note_style() -> Style<color::Yellow, color::Reset, style::Reset> {
-    Style::new(color::Yellow, color::Reset, style::Reset)
-}
-
-fn highlight_style() -> Style<color::Green, color::Reset, style::Reset> {
-    Style::new(color::Green, color::Reset, style::Reset)
-}
-
-fn info_style() -> Style<color::LightBlue, color::Reset, style::Reset> {
-    Style::new(color::LightBlue, color::Reset, style::Reset)
-}
-
-fn title_style() -> Style<color::Magenta, color::Reset, style::Bold> {
-    Style::new(color::Magenta, color::Reset, style::Bold)
-}
-
 fn fancy_plain<'a>(args: &ArgMatches, fancy: &'a str, plain: &'a str) -> &'a str {
     if args.is_present("plain") {
         plain
@@ -190,7 +117,6 @@ fn repl_symbol<'a>(args: &'a ArgMatches) -> &'a str {
 }
 
 fn print_repl_symbol<W: Write>(s: &mut W, args: &ArgMatches) -> Result<()> {
-    // TODO: Why doesn't coloring work here?
     s.cwrite(highlight_style(), repl_symbol(args))?;
     Ok(())
 }
@@ -198,7 +124,7 @@ fn print_repl_symbol<W: Write>(s: &mut W, args: &ArgMatches) -> Result<()> {
 fn print_help<W: Write>(s: &mut W, args: &ArgMatches) -> Result<()> {
     let hl = highlight_style();
     s.cwrite(hl, fancy_plain(args, " ❘〃", " |//"))?;
-    s.cwriteln(title_style(), "HELP")?;
+    s.cwriteln(info_style(), "HELP")?;
     let repl_cmd_width = REPL_COMMANDS.iter().map(|&(ref c, _)| c.width()).max().unwrap_or(0);
     for &(c, h) in REPL_COMMANDS.iter() {
         s.cwrite(hl, fancy_plain(args, " ❘", " |"))?;
@@ -282,8 +208,8 @@ fn run(args: ArgMatches) -> Result<()> {
     let mut memory = Memory::<TypedValue>::new();
     memory.start_scope();
     let mut interner = Interner::new();
-    out.cwrite(Style::new(color::LightBlue, color::Reset, style::Bold), &format!("{}", fancy_plain(&args, "🍄", "~")))?;
-    out.cwriteln(Style::new(color::LightGreen, color::Reset, style::Bold), &format!(" Welcome to the repl for Darluca {}!", crate_version!()))?;
+    out.cwrite(logo_theme(), &format!("{}", fancy_plain(&args, "🍄", "~")))?;
+    out.cwriteln(welcome_theme(), &format!(" Welcome to the repl for Darluca {}!", crate_version!()))?;
     print_repl_symbol(&mut out, &args)?;
     for c in stdin.keys() {
         use self::Key::*;
@@ -308,8 +234,7 @@ fn run(args: ArgMatches) -> Result<()> {
                                     let val = memory.get(&Identifier(interner.intern(l).unwrap())).unwrap();
                                     out.cwriteln(clear_style(), &format!("{}", val.ty().display(&interner).unwrap()))?;
                                 } else {
-                                    out.cwrite(info_style(), fancy_plain(&args, "🛈", "i"))?;
-                                    out.cwriteln(note_style(), " To get a type you need a variable:")?;
+                                    out.cwriteln(info_style(), &format!("{} To get a type you need a variable:", fancy_plain(&args, "🛈", "i")))?;
                                     out.cwriteln(clear_style(), ":c <variable>")?;
                                 }
                             },
@@ -354,10 +279,8 @@ fn run(args: ArgMatches) -> Result<()> {
                 out.flush()?;
             },
             Esc => break,
-            Ctrl(c) => match c {
-                'c' => break,
-                _ => {},
-            },
+            Ctrl('c') => break,
+            // TODO: Implement pasting: Ctrl('v') => ,
             _ => {},
         }
     }

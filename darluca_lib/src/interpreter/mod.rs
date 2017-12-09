@@ -34,8 +34,20 @@ pub enum InterpreterError {
     NonExistentAssign(String, String, String),
     #[fail(display = "Cannot access unknown variable {}", _0)] UnknownVariable(String),
     #[fail(display = "Cannot capture unknown variable {}", _0)] UnknownCapture(String),
+    #[fail(display = "Cannot index unknown variable {}", _0)] UnknownIndex(String),
+    #[fail(display = "Cannot call unknown function {}", _0)] UnknownFunction(String),
     #[fail(display = "Wrong value {} of type {} for type {}", _0, _1, _2)]
     ValueTypeMismatch(String, String, String),
+    #[fail(display = "Empty union (aka initial value) cannot be constructed")]
+    InitialConstruction,
+    #[fail(display = "Value {} of type {} cannot be added to type {}", _0, _1, _2)]
+    AddingImpossible(String, String, String),
+    #[fail(display = "Value {} of type {} cannot be added", _0, _1)]
+    UnaddableType(String, String),
+    #[fail(display = "Value {} of type {} cannot be indexed", _0, _1)]
+    UnindexableVariable(String, String),
+    #[fail(display = "Value {} of type {} cannot be called", _0, _1)]
+    UncallableFunction(String, String),
     #[fail(display = "ICE: Interning failed: {:?}", _0)] InternFailure(#[cause] ::symtern::Error),
 }
 
@@ -147,7 +159,7 @@ fn execute(
             let value = execute(&*u.value, memory, interner)?;
             union_typed(u.position, value, u.size)
         } else {
-            panic!("Initial cannot be constructed!");
+            Err(InitialConstruction)?
         },
         If(ref branch) => match *branch {
             Condition {
@@ -172,18 +184,26 @@ fn execute(
                     .replace(identifier, value, interner)
                     .unwrap_or_else(|| Err(n))?
             }
-            Addition { ref parameters } => int_typed(
-                parameters
-                    .iter()
-                    .map(|e| execute(e, memory, interner))
-                    .fold_results(0, |a, b| {
-                        let bd = format!("{:?}", b);
-                        if let Int(b) = b.into_value() {
-                            a + b
-                        } else {
-                            panic!("Cannot add: {:?} + {}", a, bd);
+            Addition { ref parameters } => int_typed({
+                    let parameters = parameters
+                        .iter()
+                        .map(|e| execute(e, memory, interner))
+                        .collect::<Result<Vec<_>>>()?;
+                    let (first, rest) = parameters.split_at(1);
+                    if let Int(ref p) = *first[0].value() {
+                        let mut result = *p;
+                        for b in rest {
+                            if let Int(b) = b.value().clone() {
+                                result += b;
+                            } else {
+                                Err(AddingImpossible(b.value().display(interner)?, b.ty().display(interner)?, "I32".to_owned()))?
+                            }
                         }
-                    })?,
+                        result
+                    } else {
+                        Err(UnaddableType(first[0].value().display(interner)?, first[0].ty().display(interner)?))?
+                    }
+                },
                 interner,
             )?,
             Indexing {
@@ -191,7 +211,7 @@ fn execute(
                 ref index,
             } => {
                 let index = execute(index, memory, interner)?;
-                let container = memory.get_mut(target).expect("Indexable should exists");
+                let container = memory.get_mut(target).ok_or(UnknownIndex(interner.resolve(target.0)?.into()))?;
                 // TODO: This is ugly. Refactor pls.
                 match container.split_mut_and_ref() {
                     (&mut Tup(ref mut value), &Ty::Tuple(ref ty)) => {
@@ -203,7 +223,7 @@ fn execute(
                         let ty = ty.get(index as usize).expect("Type should've been checked");
                         TypedValue::new(replace(value, Invalid), ty.clone(), interner)?
                     }
-                    _ => panic!("Cannot index"),
+                    (v, t) => Err(UnindexableVariable(v.display(&interner)?, t.display(&interner)?))?,
                 }
             }
             Calling {
@@ -212,11 +232,12 @@ fn execute(
             } => {
                 let fun = memory
                     .replace(name, invalid(), interner)
-                    .expect("Function should exists")?;
-                match fun.into_value() {
-                    Fun(params, exprs, closed) => {
+                    .ok_or(UnknownFunction(interner.resolve(name.0)?.into()))??;
+                match (fun.value(), fun.ty()) {
+                    (&Fun(ref params, ref exprs, ref closed), &Ty::Function(ref param_ty, ref return_ty)) => {
                         let mut memory = params
-                            .into_iter()
+                            .iter()
+                            .cloned()
                             .zip(
                                 parameters
                                     .iter()
@@ -224,11 +245,11 @@ fn execute(
                                     .collect::<Result<Vec<_>>>()?
                                     .into_iter(),
                             )
-                            .chain(closed.into_iter())
+                            .chain(closed.iter().cloned())
                             .collect();
                         interpret_scope(&exprs[..], &mut memory, interner)?
                     }
-                    _ => panic!("Cannot call"),
+                    (v, t) => Err(UncallableFunction(v.display(&interner)?, t.display(&interner)?))?,
                 }
             }
         },
