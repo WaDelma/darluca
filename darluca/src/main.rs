@@ -10,14 +10,13 @@ extern crate unicode_width;
 extern crate nom;
 extern crate symtern;
 
-
 use unicode_width::UnicodeWidthStr;
 
 use symtern::prelude::*;
 
 use clap::{Arg, App, ArgMatches};
 
-use termion::{color, cursor, clear, style, terminal_size};
+use termion::{color, cursor, clear, style};
 use termion::event::Key;
 use termion::input::TermRead;
 use termion::raw::IntoRawMode;
@@ -31,6 +30,7 @@ use darluca_lib::interpreter::{Memory, TypedValue};
 
 use std::io::{Write, stdout, stdin};
 use std::fmt;
+use std::iter::repeat;
 
 use history::History;
 
@@ -69,8 +69,11 @@ const REPL_COMMANDS: [(&str, &str); 4] = [
 
 fn main() {
     let mut about = String::from(" 🍄 The repl for Darluca.\n\nCOMMANDS:\n");
+    let repl_cmd_width = REPL_COMMANDS.iter().map(|&(ref c, _)| c.width()).max().unwrap_or(0);
     for &(c, h) in REPL_COMMANDS.iter() {
-        about.push_str(&format!("    {}    {}\n", c, h));
+        about.push_str(&format!("    {}", c));
+        about.push_str(&repeat(" ").take(repl_cmd_width - c.width()).collect::<String>());
+        about.push_str(&format!("    {}\n", h));
     }
     let matches = App::new("Darluca")
         .version(crate_version!())
@@ -132,8 +135,7 @@ impl<W: Write> WithColor for W {
 
     fn cwrite<C: color::Color, B: color::Color, S: fmt::Display>(&mut self, c: Style<C, B, S>, s: &str) -> Result<()> {
         write!(self, "{}", c)?;
-        let (_, height) = terminal_size()?;
-        let result = self.write(s.replace("\n", &format!("\n{}", cursor::Goto(1, height))).as_ref());
+        let result = self.write(s.replace("\n", &format!("\n{}", cursor::Left(!0))).as_ref());
         write!(self, "{}", clear_style())?;
         self.flush()?;
         result?;
@@ -142,10 +144,9 @@ impl<W: Write> WithColor for W {
 
     fn cwriteln<C: color::Color, B: color::Color, S: fmt::Display>(&mut self, c: Style<C, B, S>, s: &str) -> Result<()> {
         write!(self, "{}", c)?;
-        let (_, height) = terminal_size()?;
-        let result = self.write(s.replace("\n", &format!("\n{}", cursor::Goto(1, height))).as_ref());
+        let result = self.write(s.replace("\n", &format!("\n{}", cursor::Left(!0))).as_ref());
         write!(self, "{}", clear_style())?;
-        write!(self, "\n{}", cursor::Goto(1, height))?;
+        write!(self, "\n{}", cursor::Left(!0))?;
         self.flush()?;
         result?;
         Ok(())
@@ -166,6 +167,10 @@ fn note_style() -> Style<color::Yellow, color::Reset, style::Reset> {
 
 fn highlight_style() -> Style<color::Green, color::Reset, style::Reset> {
     Style::new(color::Green, color::Reset, style::Reset)
+}
+
+fn info_style() -> Style<color::LightBlue, color::Reset, style::Reset> {
+    Style::new(color::LightBlue, color::Reset, style::Reset)
 }
 
 fn title_style() -> Style<color::Magenta, color::Reset, style::Bold> {
@@ -194,9 +199,12 @@ fn print_help<W: Write>(s: &mut W, args: &ArgMatches) -> Result<()> {
     let hl = highlight_style();
     s.cwrite(hl, fancy_plain(args, " ❘〃", " |//"))?;
     s.cwriteln(title_style(), "HELP")?;
+    let repl_cmd_width = REPL_COMMANDS.iter().map(|&(ref c, _)| c.width()).max().unwrap_or(0);
     for &(c, h) in REPL_COMMANDS.iter() {
         s.cwrite(hl, fancy_plain(args, " ❘", " |"))?;
-        s.cwriteln(clear_style(), &format!("  {}  {}", c, h))?;
+        s.cwrite(clear_style(), &format!("  {}", c))?;
+        s.cwrite(clear_style(), &repeat(" ").take(repl_cmd_width - c.width()).collect::<String>())?;
+        s.cwriteln(clear_style(), &format!("  {}", h))?;
     }
     Ok(())
 }
@@ -248,17 +256,8 @@ fn interpret_line<W: Write>(line: &str, out: &mut W, memory: &mut Memory<TypedVa
         Ok(value) => {
             match value.value().display(interner) {
                 Ok(val) => {
-                    match value.ty().display(interner) {
-                        Ok(ty) => {
-                            out.cwriteln(clear_style(), &format!("{}: {}", val, ty))?;
-                            Ok(true)
-                        },
-                        Err(e) => {
-                            out.cwriteln(error_style(), "Interpreting failed:")?;
-                            out.cwriteln(clear_style(), &format!("{}", e))?;
-                            Ok(false)
-                        }
-                    }
+                    out.cwriteln(clear_style(), &format!("{}", val))?;
+                    Ok(true)
                 },
                 Err(e) => {
                     out.cwriteln(error_style(), "Interpreting failed:")?;
@@ -291,27 +290,36 @@ fn run(args: ArgMatches) -> Result<()> {
         match c? {
             Char('\n') => {
                 out.cwriteln(clear_style(), "")?;
-                if history.current().starts_with(":") {
-                    match &history.current().trim()[1..] {
-                        "q" => return Ok(()),
-                        "h" => print_help(&mut out, &args)?,
-                        "c" => {
-                            memory.clear();
-                            memory.start_scope();
-                            out.cwriteln(note_style(), "Cleared all code from the session")?
-                        },
-                        l if l.starts_with("t ") => {
-                            let l = &l[2..];
-                            // TODO: This is so bad code.
-                            let val = memory.get(&Identifier(interner.intern(l).unwrap())).unwrap();
-                            out.cwriteln(clear_style(), &format!("{}", val.ty().display(&interner).unwrap()))?;
-                        },
-                        _ => out.cwriteln(error_style(), "Unknown repl command")?,
+                if !history.current().trim().is_empty() {
+                    if history.current().starts_with(":") {
+                        match &history.current().trim()[1..] {
+                            "q" => return Ok(()),
+                            "h" => print_help(&mut out, &args)?,
+                            "c" => {
+                                memory.clear();
+                                memory.start_scope();
+                                out.cwrite(note_style(), fancy_plain(&args, "⚠", "!"))?;
+                                out.cwriteln(note_style(), " Cleared all code from the session")?
+                            },
+                            l if l.starts_with("t") => {
+                                if l.trim().len() > 1 {
+                                    let l = &l[2..];
+                                    // TODO: This is so bad code.
+                                    let val = memory.get(&Identifier(interner.intern(l).unwrap())).unwrap();
+                                    out.cwriteln(clear_style(), &format!("{}", val.ty().display(&interner).unwrap()))?;
+                                } else {
+                                    out.cwrite(info_style(), fancy_plain(&args, "🛈", "i"))?;
+                                    out.cwriteln(note_style(), " To get a type you need a variable:")?;
+                                    out.cwriteln(clear_style(), ":c <variable>")?;
+                                }
+                            },
+                            _ => out.cwriteln(error_style(), "Unknown repl command")?,
+                        }
+                    } else {
+                        interpret_line(history.current(), &mut out, &mut memory, &mut interner)?;
                     }
-                } else {
-                    interpret_line(history.current(), &mut out, &mut memory, &mut interner)?;
+                    history.proceed();
                 }
-                history.proceed();
                 print_repl_symbol(&mut out, &args)?;
             },
             Char(c) => {
@@ -357,8 +365,7 @@ fn run(args: ArgMatches) -> Result<()> {
 }
 
 fn update_pos<W: Write>(out: &mut W, offset: usize, args: &ArgMatches) -> Result<()> {
-    let (_, height) = terminal_size()?;
-    let place = repl_symbol(&args).width() + 1 + offset;
-    write!(out, "{}{}", cursor::Goto(place as u16, height), clear::AfterCursor)?;
+    let place = repl_symbol(&args).width() + offset;
+    write!(out, "{}{}{}", cursor::Left(!0), cursor::Right(place as u16), clear::AfterCursor)?;
     Ok(())
 }
