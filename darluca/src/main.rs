@@ -12,8 +12,6 @@ extern crate symtern;
 
 use unicode_width::UnicodeWidthStr;
 
-use symtern::prelude::*;
-
 use clap::{Arg, App, ArgMatches};
 
 use termion::{cursor, clear};

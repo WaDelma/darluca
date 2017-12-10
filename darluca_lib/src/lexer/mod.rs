@@ -1,7 +1,6 @@
 use std::str;
 
 use nom::{is_alphanumeric, is_digit};
-use symtern::prelude::*;
 
 use interner::Interner;
 

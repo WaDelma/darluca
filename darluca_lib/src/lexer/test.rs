@@ -1,5 +1,3 @@
-use symtern::prelude::*;
-
 use lexer::Lexer;
 use interner::Interner;
 

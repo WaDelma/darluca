@@ -1,5 +1,3 @@
-use symtern::prelude::*;
-
 use itertools::Itertools;
 use itertools::process_results;
 
@@ -156,8 +154,7 @@ pub enum Ty {
     Named(Symbol),
     Tuple(Vec<Ty>),
     Union(Vec<Ty>),
-    // TODO: Make closures type unique
-    Function(Box<Ty>, Box<Ty>),
+    Function(Box<Ty>, Box<Ty>, Option<Symbol>),
 }
 
 impl Ty {
@@ -176,7 +173,11 @@ impl Ty {
             Int(_) => Ty::Named(interner.intern("I32")?),
             Bool(_) => Ty::Named(interner.intern("Bool")?),
             // TODO: Closures vs functions.
-            Fun(..) => Ty::Function(Box::new(Unknown), Box::new(Unknown)),
+            Fun(_, _, ref c) => if c.is_empty() {
+                Ty::Function(Box::new(Unknown), Box::new(Unknown), None)
+            } else {
+                Ty::Function(Box::new(Unknown), Box::new(Unknown), Some(interner.generate("fun")?))
+            }
         })
     }
 
@@ -192,8 +193,8 @@ impl Ty {
                 a.iter().zip(b.iter()).all(|(a, b)| a.is_subtype_of(b))
             }
             // Contravariant on parameter and covariant on return type
-            (&Function(ref ai, ref ar), &Function(ref bi, ref br)) => {
-                bi.is_subtype_of(ai) && ar.is_subtype_of(br)
+            (&Function(ref ai, ref ar, ref ac), &Function(ref bi, ref br, ref bc)) => {
+                ac.is_none() && bc.is_none() && bi.is_subtype_of(ai) && ar.is_subtype_of(br)
             }
             // TODO: These should impose subtype requirements.
             (&Unknown, _) | (_, &Unknown) => true,
@@ -223,11 +224,20 @@ impl Ty {
                 f.push_str("|]");
             }
             Named(ref i) => f.push_str(&format!("{}", interner.resolve(*i)?)),
-            Function(ref param, ref ret) => f.push_str(&format!(
-                "{} -> {}",
-                param.display(interner)?,
-                ret.display(interner)?
-            )),
+            Function(ref param, ref ret, ref uniq) => if let Some(ref uniq) = *uniq {
+                f.push_str(&format!(
+                    "{} -> {}/{}",
+                    param.display(interner)?,
+                    ret.display(interner)?,
+                    interner.resolve(*uniq)?
+                ))
+            } else {
+                f.push_str(&format!(
+                    "{} -> {}",
+                    param.display(interner)?,
+                    ret.display(interner)?
+                ))
+            },
         }
         Ok(f)
     }
@@ -241,7 +251,7 @@ impl<'a> From<&'a Type> for Ty {
             Type::Tuple(ref t) => Ty::Tuple(t.iter().map(Ty::from).collect()),
             Type::Union(ref t) => Ty::Union(t.iter().map(Ty::from).collect()),
             Type::Function(ref p, ref r) => {
-                Ty::Function(Box::new(Ty::from(&**p)), Box::new(Ty::from(&**r)))
+                Ty::Function(Box::new(Ty::from(&**p)), Box::new(Ty::from(&**r)), None)
             }
         }
     }

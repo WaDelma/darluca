@@ -1,5 +1,3 @@
-use symtern::prelude::*;
-
 use interner::Interner;
 
 use super::Value::*;
@@ -352,15 +350,17 @@ fn interpret_function() {
         }
         let y: I32 = fun[1,]
     }{
-        fun => TyVal::unchecked(Invalid, Function(Box::new(Named(int)), Box::new(Named(int))))
+        fun => TyVal::unchecked(Invalid, Function(Box::new(Named(int)), Box::new(Named(int)), None))
         y => TyVal::unchecked(Int(1), Named(int))
     });
 }
 
 #[test]
+// TODO: Need to implement super type for closures to be able to do these tests.
 fn interpret_closure() {
     let mut interner = Interner::new();
     let int = interner.intern("I32").unwrap();
+    let closure = interner.intern("fun¤0").unwrap();
     assert_parse!(interner {
         let fun: ([,] -> I32) = {
             let x: I32 = 1
@@ -370,7 +370,7 @@ fn interpret_closure() {
         }
         let y: I32 = fun[,]
     }{
-        fun => TyVal::unchecked(Invalid, Function(Box::new(Tuple(vec![])), Box::new(Named(int))))
+        fun => TyVal::unchecked(Invalid, Function(Box::new(Tuple(vec![])), Box::new(Named(int)), Some(closure)))
         y => TyVal::unchecked(Int(1), Named(int))
     }{
         x => TyVal::unchecked(Invalid, Named(int))
@@ -382,6 +382,7 @@ fn interpret_closure() {
 fn interpret_closure_closure() {
     let mut interner = Interner::new();
     let int = interner.intern("I32").unwrap();
+    let closure = interner.intern("fun¤0").unwrap();
     assert_parse!(interner {
         let fun: (I32 -> I32) = {
             let x: I32 = 1
@@ -395,7 +396,7 @@ fn interpret_closure_closure() {
         }
         let y: I32 = fun[3,]
     }{
-        fun => TyVal::unchecked(Invalid, Function(Box::new(Named(int)), Box::new(Named(int))))
+        fun => TyVal::unchecked(Invalid, Function(Box::new(Named(int)), Box::new(Named(int)), Some(closure)))
         y => TyVal::unchecked(Int(6), Named(int))
     }{
         x => TyVal::unchecked(Invalid, Named(int))

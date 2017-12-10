@@ -1,5 +1,3 @@
-use symtern::prelude::*;
-
 use interner::Interner;
 
 use super::ast::{self, Ast, Expression, Identifier, Type};

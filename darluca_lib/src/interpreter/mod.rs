@@ -1,7 +1,3 @@
-use symtern::prelude::*;
-
-use itertools::Itertools;
-
 use std::collections::HashSet;
 use std::mem::replace;
 use std::iter::once;
@@ -112,7 +108,8 @@ fn execute(
                         .unwrap_or_else(|| Err(UnknownCapture(interner.resolve(f.0)?.into())))?;
                     Ok((*f, c))
                 })
-                .collect::<Result<_>>()?;
+                .collect::<Result<Vec<_>>>()?;
+            let is_function = closed_over.is_empty();
             let fun = Value::Fun(params.clone(), expressions.clone(), closed_over);
             // TODO: Closure vs function
             TypedValue::new(
@@ -120,6 +117,11 @@ fn execute(
                 Ty::Function(
                     Box::new(Ty::from(parameter_ty)),
                     Box::new(Ty::from(return_ty)),
+                    if is_function {
+                        None
+                    } else {
+                        Some(interner.generate("fun")?)
+                    }
                 ),
                 interner,
             )
@@ -230,11 +232,26 @@ fn execute(
                 ref name,
                 ref parameters,
             } => {
-                let fun = memory
-                    .replace(name, invalid(), interner)
-                    .ok_or(UnknownFunction(interner.resolve(name.0)?.into()))??;
+                let is_closure = {
+                    let fun = memory.get(name).ok_or(UnknownFunction(interner.resolve(name.0)?.into()))?;
+                    if let Ty::Function(_, _, ref uniq) = *fun.ty() {
+                        uniq.is_none()
+                    } else {
+                        false
+                    }
+                };
+                let fun = if is_closure {
+                    memory
+                        .replace(name, invalid(), interner)
+                        .ok_or(UnknownFunction(interner.resolve(name.0)?.into()))??
+                } else {
+                    memory
+                        .get(name)
+                        .ok_or(UnknownFunction(interner.resolve(name.0)?.into()))?
+                        .clone()
+                };
                 match (fun.value(), fun.ty()) {
-                    (&Fun(ref params, ref exprs, ref closed), &Ty::Function(ref param_ty, ref return_ty)) => {
+                    (&Fun(ref params, ref exprs, ref closed), &Ty::Function(ref param_ty, ref return_ty, _)) => {
                         let mut memory = params
                             .iter()
                             .cloned()
