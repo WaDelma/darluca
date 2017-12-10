@@ -1,4 +1,5 @@
 use interner::Interner;
+use parser::ast::{Expression, Identifier, Operation, Literal};
 
 use super::Value::*;
 use super::Ty::*;
@@ -15,7 +16,6 @@ macro_rules! assert_parse {
         {
             #![allow(unused)]
             use interpreter::Memory;
-            use parser::ast::Identifier;
             use symtern::prelude::*;
             use std::collections::HashMap;
 
@@ -343,15 +343,35 @@ fn intepret_moving_into_scope() {
 #[test]
 fn interpret_function() {
     let mut interner = Interner::new();
+    let x = interner.intern("x").unwrap();
     let int = interner.intern("I32").unwrap();
+    let one = interner.intern("1").unwrap();
     assert_parse!(interner {
         let fun: (I32 -> I32) = [x: I32,] -> I32 {
-            x
+            (x + 1)
         }
-        let y: I32 = fun[1,]
+        let x: I32 = fun[1,]
+        fun = {
+            fun
+        }
+        let y: I32 = fun[2,]
     }{
-        fun => TyVal::unchecked(Invalid, Function(Box::new(Named(int)), Box::new(Named(int)), None))
-        y => TyVal::unchecked(Int(1), Named(int))
+        fun => TyVal::unchecked(Fun(
+                vec![Identifier(x)],
+                vec![Expression::Operation(
+                    Operation::Addition {
+                        parameters: vec![
+                            Expression::Identifier(Identifier(x)),
+                            Expression::Literal(Literal::Integer(one))
+                        ]
+                    }
+                )],
+                vec![]
+            ),
+            Function(Box::new(Named(int)), Box::new(Named(int)), None)
+        )
+        x => TyVal::unchecked(Int(2), Named(int))
+        y => TyVal::unchecked(Int(3), Named(int))
     });
 }
 

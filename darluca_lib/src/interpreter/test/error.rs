@@ -1,5 +1,5 @@
 use super::super::InterpreterError::*;
-
+use super::super::{unknown, unoperable};
 
 macro_rules! assert_error {
     ($interner:ident {
@@ -43,7 +43,37 @@ fn using_unknown_variable() {
     assert_error!({
         x
     }{
-        UnknownVariable("x".into())
+        unknown("variable", "access", "x")
+    });
+}
+
+#[test]
+fn calling_unknown_function() {
+    assert_error!({
+        x[1,]
+    }{
+        unknown("function", "call", "x")
+    });
+}
+
+#[test]
+fn indexing_unknown_function() {
+    assert_error!({
+        x[1]
+    }{
+        unknown("variable", "index", "x")
+    });
+}
+
+
+#[test]
+fn capturing_unknown_variable() {
+    assert_error!({
+        [,] -> {
+            x
+        }
+    }{
+        unknown("variable", "capture", "x")
     });
 }
 
@@ -100,5 +130,55 @@ fn assign_tuple_variable_to_int_variable() {
         x = y
     }{
         ValueTypeMismatch("[1,]".into(), "[I32,]".into(), "I32".into())
+    });
+}
+
+#[test]
+fn bool_is_not_lhs_of_addition() {
+    assert_error!({
+        let y: Bool = true
+        (y + 1)
+    }{
+        unoperable("true", "Bool", "added")
+    });
+}
+
+#[test]
+fn bool_is_not_rhs_of_addition() {
+    assert_error!({
+        let y: Bool = true
+        (1 + y)
+    }{
+        AddingImpossible("true".into(), "Bool".into(), "I32".into())
+    });
+}
+
+#[test]
+fn bool_is_not_indexable() {
+    assert_error!({
+        let y: Bool = true
+        y[1]
+    }{
+        unoperable("true", "Bool", "indexed")
+    });
+}
+
+
+#[test]
+fn bool_is_not_callable() {
+    assert_error!({
+        let y: Bool = true
+        y[1,]
+    }{
+        unoperable("true", "Bool", "called")
+    });
+}
+
+#[test]
+fn constructin_initial_is_impossible() {
+    assert_error!({
+        [|]
+    }{
+         InitialConstruction
     });
 }

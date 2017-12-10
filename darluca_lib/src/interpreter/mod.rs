@@ -28,23 +28,41 @@ pub enum InterpreterError {
     #[fail(display = "Cannot assign non-existent variable {} with value {} of type {}", _0, _1,
            _2)]
     NonExistentAssign(String, String, String),
-    #[fail(display = "Cannot access unknown variable {}", _0)] UnknownVariable(String),
-    #[fail(display = "Cannot capture unknown variable {}", _0)] UnknownCapture(String),
-    #[fail(display = "Cannot index unknown variable {}", _0)] UnknownIndex(String),
-    #[fail(display = "Cannot call unknown function {}", _0)] UnknownFunction(String),
+    #[fail(display = "Cannot {} unknown {} named {}", action, target, name)]
+    Unknown {
+        target: String,
+        action: String,
+        name: String,
+    },
     #[fail(display = "Wrong value {} of type {} for type {}", _0, _1, _2)]
     ValueTypeMismatch(String, String, String),
     #[fail(display = "Empty union (aka initial value) cannot be constructed")]
     InitialConstruction,
     #[fail(display = "Value {} of type {} cannot be added to type {}", _0, _1, _2)]
     AddingImpossible(String, String, String),
-    #[fail(display = "Value {} of type {} cannot be added", _0, _1)]
-    UnaddableType(String, String),
-    #[fail(display = "Value {} of type {} cannot be indexed", _0, _1)]
-    UnindexableVariable(String, String),
-    #[fail(display = "Value {} of type {} cannot be called", _0, _1)]
-    UncallableFunction(String, String),
+    #[fail(display = "Value {} of type {} cannot be {}", value, ty, action)]
+    Unoperable {
+        value: String,
+        ty: String,
+        action: String,
+    },
     #[fail(display = "ICE: Interning failed: {:?}", _0)] InternFailure(#[cause] ::symtern::Error),
+}
+
+fn unknown<A: Into<String>, B: Into<String>, C: Into<String>>(target: A, action: B, name: C) -> InterpreterError {
+    Unknown {
+        target: target.into(),
+        action: action.into(),
+        name: name.into(),
+    }
+}
+
+fn unoperable<A: Into<String>, B: Into<String>, C: Into<String>>(value: A, ty: B, action: C) -> InterpreterError {
+    Unoperable {
+        value: value.into(),
+        ty: ty.into(),
+        action: action.into(),
+    }
 }
 
 impl From<::symtern::Error> for InterpreterError {
@@ -103,9 +121,13 @@ fn execute(
             find_free_variables(&mut free, &mut closed, expressions);
             let closed_over = free.iter()
                 .map(|f| {
-                    let c = memory
-                        .replace(f, invalid(), interner)
-                        .unwrap_or_else(|| Err(UnknownCapture(interner.resolve(f.0)?.into())))?;
+                    let c = move_or_copy(f, memory, interner).map_err(|mut e| {
+                        if let Unknown { ref mut target, ref mut action, ..} = e {
+                            *target = "variable".into();
+                            *action = "capture".into();
+                        }
+                        e
+                    })?;
                     Ok((*f, c))
                 })
                 .collect::<Result<Vec<_>>>()?;
@@ -150,9 +172,7 @@ fn execute(
             }
             Boolean(ref b) => bool_typed(*b, interner)?,
         },
-        Identifier(ref i) => memory
-            .replace(i, invalid(), interner)
-            .unwrap_or_else(|| Err(UnknownVariable(interner.resolve(i.0)?.into())))?,
+        Identifier(ref i) => move_or_copy(i, memory, interner)?,
         Tuple { ref value } => tuple_typed(value
             .iter()
             .map(|e| execute(e, memory, interner))
@@ -203,7 +223,7 @@ fn execute(
                         }
                         result
                     } else {
-                        Err(UnaddableType(first[0].value().display(interner)?, first[0].ty().display(interner)?))?
+                        Err(unoperable(first[0].value().display(interner)?, first[0].ty().display(interner)?, "added"))?
                     }
                 },
                 interner,
@@ -213,7 +233,7 @@ fn execute(
                 ref index,
             } => {
                 let index = execute(index, memory, interner)?;
-                let container = memory.get_mut(target).ok_or(UnknownIndex(interner.resolve(target.0)?.into()))?;
+                let container = memory.get_mut(target).ok_or(unknown("variable", "index", interner.resolve(target.0)?))?;
                 // TODO: This is ugly. Refactor pls.
                 match container.split_mut_and_ref() {
                     (&mut Tup(ref mut value), &Ty::Tuple(ref ty)) => {
@@ -223,33 +243,23 @@ fn execute(
                         };
                         let value = value.get_mut(index as usize).expect("Out of bounds access");
                         let ty = ty.get(index as usize).expect("Type should've been checked");
+                        // TODO: move_or_copy
                         TypedValue::new(replace(value, Invalid), ty.clone(), interner)?
                     }
-                    (v, t) => Err(UnindexableVariable(v.display(&interner)?, t.display(&interner)?))?,
+                    (v, t) => Err(unoperable(v.display(&interner)?, t.display(&interner)?, "indexed"))?,
                 }
             }
             Calling {
                 ref name,
                 ref parameters,
             } => {
-                let is_closure = {
-                    let fun = memory.get(name).ok_or(UnknownFunction(interner.resolve(name.0)?.into()))?;
-                    if let Ty::Function(_, _, ref uniq) = *fun.ty() {
-                        uniq.is_none()
-                    } else {
-                        false
+                let fun = move_or_copy(name, memory, interner).map_err(|mut e| {
+                    if let Unknown { ref mut target, ref mut action, .. } = e {
+                        *target = "function".into();
+                        *action = "call".into();
                     }
-                };
-                let fun = if is_closure {
-                    memory
-                        .replace(name, invalid(), interner)
-                        .ok_or(UnknownFunction(interner.resolve(name.0)?.into()))??
-                } else {
-                    memory
-                        .get(name)
-                        .ok_or(UnknownFunction(interner.resolve(name.0)?.into()))?
-                        .clone()
-                };
+                    e
+                })?;
                 match (fun.value(), fun.ty()) {
                     (&Fun(ref params, ref exprs, ref closed), &Ty::Function(ref param_ty, ref return_ty, _)) => {
                         let mut memory = params
@@ -266,7 +276,7 @@ fn execute(
                             .collect();
                         interpret_scope(&exprs[..], &mut memory, interner)?
                     }
-                    (v, t) => Err(UncallableFunction(v.display(&interner)?, t.display(&interner)?))?,
+                    (v, t) => Err(unoperable(v.display(&interner)?, t.display(&interner)?, "called"))?,
                 }
             }
         },
@@ -297,6 +307,21 @@ fn execute_if(
             Else(ref otherwise) => interpret_scope(otherwise, memory, interner),
         }
     }
+}
+
+fn move_or_copy(identifier: &ast::Identifier, memory: &mut Memory<TypedValue>, interner: &Interner) -> Result<TypedValue> {
+    {
+        let var = memory.get(identifier)
+            .ok_or(unknown("variable", "access", interner.resolve(identifier.0)?))?;
+        if match *var.ty() {
+            Ty::Function(_, _, ref uniq) => uniq.is_none(),
+            _ => false,
+        } {
+            return Ok(var.clone());
+        }
+    }
+    memory.replace(identifier, invalid(), interner)
+        .ok_or(unknown("variable", "access", interner.resolve(identifier.0)?))?
 }
 
 fn add_not_closed(
