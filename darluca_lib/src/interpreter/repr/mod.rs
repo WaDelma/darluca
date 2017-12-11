@@ -4,8 +4,9 @@ use itertools::process_results;
 use std::iter::{once, repeat};
 use std::mem::replace;
 
-use parser::ast::{self, Expression, Type};
+use parser::ast::{self, Expr};
 use interner::{Interner, Symbol};
+use typechecker::{TypeKey, Type};
 
 use super::InterpreterError::*;
 use super::Result;
@@ -100,7 +101,7 @@ pub enum Value {
     // TODO: Should the function value carry it's type? The closed values already do...
     Fun(
         Vec<ast::Identifier>,
-        Vec<Expression>,
+        Vec<Expr<TypeKey>>,
         Vec<(ast::Identifier, TypedValue)>,
     ),
 }
@@ -250,8 +251,8 @@ impl<'a> From<&'a Type> for Ty {
             Type::Named(ref s) => Ty::Named(*s),
             Type::Tuple(ref t) => Ty::Tuple(t.iter().map(Ty::from).collect()),
             Type::Union(ref t) => Ty::Union(t.iter().map(Ty::from).collect()),
-            Type::Function(ref p, ref r) => {
-                Ty::Function(Box::new(Ty::from(&**p)), Box::new(Ty::from(&**r)), None)
+            Type::Function(ref p, ref r, ref closed) => {
+                Ty::Function(Box::new(Ty::from(&**p)), Box::new(Ty::from(&**r)), closed.clone())
             }
         }
     }

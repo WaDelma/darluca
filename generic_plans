@@ -1,0 +1,23 @@
+[x: X, y: Y, X: Add[Y, Out=XY], Y, XY] -> XY {
+  (x + y)
+}
+
+I32
+
+Bool
+
+T1 -> T2
+
+T + T -> T where T: Numeric
+
+[T1, T2, ...,]
+
+a[b] where b:I32 -> T/n
+
+[T1|T2|...|]
+
+if Bool {
+  T
+} else {
+  T
+}

@@ -25,6 +25,7 @@ use darluca_lib::lexer::Lexer;
 use darluca_lib::parser::ast::Identifier;
 use darluca_lib::interpreter::interpret_noscope;
 use darluca_lib::interpreter::{Memory, TypedValue};
+use darluca_lib::typechecker::typecheck;
 
 use std::io::{Write, stdout, stdin};
 use std::iter::repeat;
@@ -175,6 +176,14 @@ fn interpret_line<W: Write>(line: &str, out: &mut W, memory: &mut Memory<TypedVa
             out.cwriteln(clear_style(), &format!("{:?}", n))?;
             return Ok(false);
         },
+    };
+    let ast = match typecheck(ast, interner) {
+        Ok(ast) => ast,
+        Err(e) => {
+            out.cwriteln(error_style(), "Type checking failed:")?;
+            out.cwriteln(clear_style(), &format!("{:?}", e))?;
+            return Ok(false);
+        }
     };
     match interpret_noscope(&ast.expressions, memory, interner) {
         Ok(value) => {

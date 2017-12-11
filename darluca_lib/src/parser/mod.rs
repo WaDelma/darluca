@@ -7,6 +7,7 @@ use lexer::tokens::Balanced::*;
 use lexer::tokens::Operator::*;
 use lexer::tokens::Direction::*;
 use self::ast::*;
+use typechecker::Type;
 
 pub mod ast;
 #[cfg(test)]
@@ -94,14 +95,14 @@ named!(literal_boolean(Tks) -> Literal,
     )
 );
 
-named!(literal(Tks) -> Expression,
+named!(literal(Tks) -> Expr<()>,
     map!(
         alt_complete!(
                 literal_integer!() |
                 literal_boolean
         ),
         |literal| {
-            Expression::Literal(literal)
+            Expression::Literal(literal).into()
         }
     )
 );
@@ -139,7 +140,7 @@ named!(ty_function(Tks) -> Type,
         tag_token!(Arrow(Right)) >>
         result: ty >>
         tag_token!(Parenthesis(Close)) >>
-        (Type::Function(Box::new(param), Box::new(result)))
+        (Type::Function(Box::new(param), Box::new(result), None))
     )
 );
 
@@ -152,7 +153,7 @@ named!(ty(Tks) -> Type,
     )
 );
 
-named!(assignment(Tks) -> Operation,
+named!(assignment(Tks) -> Operation<()>,
     map!(
         do_parse!(
             identifier: identifier!() >>
@@ -169,7 +170,7 @@ named!(assignment(Tks) -> Operation,
     )
 );
 
-named!(addition(Tks) -> Operation,
+named!(addition(Tks) -> Operation<()>,
     map!(
         do_parse!(
             tag_token!(Parenthesis(Open)) >>
@@ -188,7 +189,7 @@ named!(addition(Tks) -> Operation,
 );
 
 // TODO: Remove indexing and make tuples functions?
-named!(indexing(Tks) -> Operation,
+named!(indexing(Tks) -> Operation<()>,
     map!(
         do_parse!(
             target: identifier!() >>
@@ -206,7 +207,7 @@ named!(indexing(Tks) -> Operation,
     )
 );
 
-named!(calling(Tks) -> Operation,
+named!(calling(Tks) -> Operation<()>,
     map!(
         do_parse!(
             name: identifier!() >>
@@ -214,7 +215,7 @@ named!(calling(Tks) -> Operation,
             (name, params)
         ),
         |(name, params)| {
-            if let Expression::Tuple { value: parameters } = params {
+            if let Expression::Tuple { value: parameters } = params.expression {
                 Operation::Calling {
                     name,
                     parameters,
@@ -227,7 +228,7 @@ named!(calling(Tks) -> Operation,
     )
 );
 
-named!(operation(Tks) -> Expression,
+named!(operation(Tks) -> Expr<()>,
     map!(
         alt_complete!(
             calling |
@@ -236,13 +237,13 @@ named!(operation(Tks) -> Expression,
             indexing
         ),
         |operation| {
-            Expression::Operation(operation)
+            Expression::Operation(operation).into()
         }
     )
 );
 
 
-named!(tuple(Tks) -> Expression,
+named!(tuple(Tks) -> Expr<()>,
     map!(
         do_parse!(
             tag_token!(Square(Open)) >>
@@ -257,18 +258,18 @@ named!(tuple(Tks) -> Expression,
         |value| {
             Expression::Tuple {
                 value,
-            }
+            }.into()
         }
     )
 );
 
-named!(union(Tks) -> Expression,
+named!(union(Tks) -> Expr<()>,
     alt!(
         do_parse!(
             tag_token!(Square(Open)) >>
             tag_token!(Bar) >>
             tag_token!(Square(Close)) >>
-            (Expression::Union(None))
+            (Expression::Union(None).into())
         ) |
         map!(
             do_parse!(
@@ -303,13 +304,13 @@ named!(union(Tks) -> Expression,
                     value: Box::new(value),
                     position: before,
                     size: before + after + 1
-                }))
+                })).into()
             }
         )
     )
 );
 
-named!(scope(Tks) -> Expression,
+named!(scope(Tks) -> Expr<()>,
     map!(
         do_parse!(
             tag_token!(Curly(Open)) >>
@@ -320,12 +321,12 @@ named!(scope(Tks) -> Expression,
         |expressions| {
             Expression::Scope {
                 expressions
-            }
+            }.into()
         }
     )
 );
 
-named!(branch(Tks) -> ast::If,
+named!(branch(Tks) -> ast::If<()>,
     map!(
         do_parse!(
             tag_token!(If) >>
@@ -361,7 +362,7 @@ named!(branch(Tks) -> ast::If,
     )
 );
 
-named!(declaration(Tks) -> Expression,
+named!(declaration(Tks) -> Expr<()>,
     map!(
         do_parse!(
             tag_token!(Let) >>
@@ -383,12 +384,12 @@ named!(declaration(Tks) -> Expression,
                 identifier,
                 ty,
                 value,
-            }
+            }.into()
         }
     )
 );
 
-named!(function(Tks) -> Expression,
+named!(function(Tks) -> Expr<()>,
     map!(
         do_parse!(
             tag_token!(Square(Open)) >>
@@ -422,13 +423,13 @@ named!(function(Tks) -> Expression,
             } else {
                 parameter_ty.remove(0)
             };
-            if let Expression::Scope { expressions } = scope {
+            if let Expression::Scope { expressions } = scope.expression {
                 Expression::Function {
                     params,
                     expressions,
                     parameter_ty,
                     return_ty,
-                }
+                }.into()
             } else {
                 // TODO: If enum variants will become types...
                 unreachable!("Parsing scope should yield scope");
@@ -437,17 +438,17 @@ named!(function(Tks) -> Expression,
     )
 );
 
-named!(expression(Tks) -> Expression,
+named!(expression(Tks) -> Expr<()>,
     alt_complete!(
         operation |
         function |
         scope |
-        branch => {Expression::If} |
+        branch => {|b| Expression::If(b).into()} |
         tuple |
         union |
         declaration |
         literal |
-        identifier!() => {Expression::Identifier}
+        identifier!() => {|i| Expression::Identifier(i).into()}
     )
 );
 

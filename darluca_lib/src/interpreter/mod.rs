@@ -2,12 +2,13 @@ use std::collections::HashSet;
 use std::mem::replace;
 use std::iter::once;
 
-use parser::ast::{self, Ast, Expression};
+use parser::ast::{self, Ast, Expression, Expr};
 use parser::ast::Expression::*;
 use parser::ast::Literal::*;
 use parser::ast::Operation::*;
 use parser::ast::If::*;
 use interner::Interner;
+use typechecker::{TypedAst, TypeKey, Type};
 
 use self::InterpreterError::*;
 use self::repr::{bool_typed, int_typed, invalid, terminal, tuple_typed, union_typed, Ty,
@@ -71,12 +72,12 @@ impl From<::symtern::Error> for InterpreterError {
     }
 }
 
-pub fn interpret(ast: &Ast, interner: &mut Interner) -> Result<TypedValue> {
+pub fn interpret(ast: &TypedAst, interner: &mut Interner) -> Result<TypedValue> {
     interpret_scope(&ast.expressions, &mut Memory::new(), interner)
 }
 
 pub fn interpret_noscope(
-    expressions: &[Expression],
+    expressions: &[Expr<TypeKey>],
     memory: &mut Memory<TypedValue>,
     interner: &mut Interner,
 ) -> Result<TypedValue> {
@@ -88,7 +89,7 @@ pub fn interpret_noscope(
 }
 
 fn interpret_scope(
-    expressions: &[Expression],
+    expressions: &[Expr<TypeKey>],
     memory: &mut Memory<TypedValue>,
     interner: &mut Interner,
 ) -> Result<TypedValue> {
@@ -102,11 +103,11 @@ fn interpret_scope(
 }
 
 fn execute(
-    e: &Expression,
+    e: &Expr<TypeKey>,
     memory: &mut Memory<TypedValue>,
     interner: &mut Interner,
 ) -> Result<TypedValue> {
-    Ok(match *e {
+    Ok(match e.expression {
         Scope { ref expressions } => interpret_scope(expressions, memory, interner)?,
         Function {
             ref params,
@@ -284,9 +285,9 @@ fn execute(
 }
 
 fn execute_if(
-    condition: &Expression,
-    expressions: &[Expression],
-    otherwise: &ast::If,
+    condition: &Expr<TypeKey>,
+    expressions: &[Expr<TypeKey>],
+    otherwise: &ast::If<TypeKey>,
     memory: &mut Memory<TypedValue>,
     interner: &mut Interner,
 ) -> Result<TypedValue> {
@@ -339,10 +340,10 @@ fn find_free_variables<'a, I>(
     closed: &mut Memory<()>,
     exprs: I,
 ) where
-    I: IntoIterator<Item = &'a Expression>,
+    I: IntoIterator<Item = &'a Expr<TypeKey>>,
 {
     for e in exprs {
-        match *e {
+        match e.expression {
             Identifier(ref i) => add_not_closed(free, &*closed, i),
             Operation(ref op) => match *op {
                 Assignment {
@@ -411,9 +412,9 @@ fn find_free_variables<'a, I>(
 }
 
 fn find_free_variables_if(
-    condition: &Expression,
-    expressions: &[Expression],
-    otherwise: &ast::If,
+    condition: &Expr<TypeKey>,
+    expressions: &[Expr<TypeKey>],
+    otherwise: &ast::If<TypeKey>,
     free: &mut HashSet<ast::Identifier>,
     closed: &mut Memory<()>,
 ) {

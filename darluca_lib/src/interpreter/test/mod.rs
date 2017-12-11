@@ -1,5 +1,6 @@
 use interner::Interner;
-use parser::ast::{Expression, Identifier, Operation, Literal};
+use parser::ast::{Expression, Expr, Identifier, Operation, Literal};
+use typechecker::Typechecker;
 
 use super::Value::*;
 use super::Ty::*;
@@ -25,6 +26,7 @@ macro_rules! assert_parse {
                 ).1.unwrap().1
             };
             let ast = ::parser::parse(tokens.borrow()).unwrap().1;
+            let ast = ::typechecker::typecheck(ast, &mut $interner).unwrap();
             let mut memory = Memory::new();
             match ::interpreter::interpret_scope(&ast.expressions, &mut memory, &mut $interner) {
                 Err(e) => panic!("Interpreting failed: {}", e),
@@ -346,6 +348,8 @@ fn interpret_function() {
     let x = interner.intern("x").unwrap();
     let int = interner.intern("I32").unwrap();
     let one = interner.intern("1").unwrap();
+    // TODO: Figure out how to reproduce typechecking here. Or some other way to test this.
+    let mut typechecker = Typechecker::new();
     assert_parse!(interner {
         let fun: (I32 -> I32) = [x: I32,] -> I32 {
             (x + 1)
@@ -358,14 +362,14 @@ fn interpret_function() {
     }{
         fun => TyVal::unchecked(Fun(
                 vec![Identifier(x)],
-                vec![Expression::Operation(
+                vec![Expr::new(Expression::Operation(
                     Operation::Addition {
                         parameters: vec![
-                            Expression::Identifier(Identifier(x)),
-                            Expression::Literal(Literal::Integer(one))
+                            Expr::new(Expression::Identifier(Identifier(x)), typechecker.new_type(::typechecker::Type::Named(int))),
+                            Expr::new(Expression::Literal(Literal::Integer(one)), typechecker.new_type(::typechecker::Type::Named(int)))
                         ]
                     }
-                )],
+                ), typechecker.new_type(::typechecker::Type::Named(int)))],
                 vec![]
             ),
             Function(Box::new(Named(int)), Box::new(Named(int)), None)

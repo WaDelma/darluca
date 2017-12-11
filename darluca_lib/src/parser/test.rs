@@ -1,6 +1,7 @@
 use interner::Interner;
+use typechecker::Type;
 
-use super::ast::{self, Ast, Expression, Identifier, Type};
+use super::ast::{self, Ast, Expression, Identifier};
 use super::ast::Expression::*;
 use super::ast::Literal::*;
 use super::ast::Operation::*;
@@ -23,7 +24,7 @@ macro_rules! assert_parse {
                     },
                     Ast {
                         expressions: vec![
-                            $($exprs,)*
+                            $(From::from($exprs),)*
                         ]
                     }
                 );
@@ -52,7 +53,7 @@ fn parse_declaration() {
         Declaration {
             identifier: Identifier(x),
             ty: Type::Named(int),
-            value: Some(Box::new(Literal(Integer(one)))),
+            value: Some(Box::new(Literal(Integer(one)).into())),
         }
     });
 }
@@ -200,7 +201,7 @@ fn parse_assignment() {
         }
         Operation(Assignment {
             identifier: Identifier(x),
-            value: Box::new(Literal(Integer(one))),
+            value: Box::new(Literal(Integer(one)).into()),
         })
     });
 }
@@ -233,7 +234,7 @@ fn parse_scope_with_declaration() {
                     identifier: Identifier(x),
                     value: None,
                     ty: Type::Union(vec![]),
-                }
+                }.into()
             ]
         }
     });
@@ -260,8 +261,8 @@ fn parse_tuple() {
     }{
         Tuple {
             value: vec![
-                Literal(Integer(one)),
-                Literal(Integer(two)),
+                Literal(Integer(one)).into(),
+                Literal(Integer(two)).into(),
             ]
         }
     });
@@ -278,13 +279,13 @@ fn parse_tuple_tuple() {
     }{
         Tuple {
             value: vec![
-                Literal(Integer(one)),
+                Literal(Integer(one)).into(),
                 Tuple {
                     value: vec![
-                        Literal(Integer(two)),
-                        Literal(Integer(three)),
+                        Literal(Integer(two)).into(),
+                        Literal(Integer(three)).into(),
                     ]
-                },
+                }.into(),
             ]
         }
     });
@@ -307,7 +308,7 @@ fn parse_union() {
         [1|_|]
     }{
         Union(Some(ast::Union {
-            value: Box::new(Literal(Integer(one))),
+            value: Box::new(Literal(Integer(one)).into()),
             position: 0,
             size: 2,
         }))
@@ -323,10 +324,10 @@ fn parse_union_union() {
     }{
         Union(Some(ast::Union {
             value: Box::new(Union(Some(ast::Union {
-                value: Box::new(Literal(Integer(two))),
+                value: Box::new(Literal(Integer(two)).into()),
                 position: 1,
                 size: 2,
-            }))),
+            })).into()),
             position: 0,
             size: 3,
         }))
@@ -343,8 +344,8 @@ fn parse_addition() {
     }{
         Operation(Addition {
             parameters: vec![
-                    Literal(Integer(one)),
-                    Literal(Integer(two))
+                    Literal(Integer(one)).into(),
+                    Literal(Integer(two)).into()
                 ],
         })
     })
@@ -378,9 +379,9 @@ fn parse_if_else() {
         }
     }{
         If(Condition {
-            condition: Box::new(Literal(Boolean(true))),
-            expressions: vec![Literal(Boolean(true))],
-            otherwise: Box::new(Else(vec![Literal(Boolean(false))])),
+            condition: Box::new(Literal(Boolean(true)).into()),
+            expressions: vec![Literal(Boolean(true)).into()],
+            otherwise: Box::new(Else(vec![Literal(Boolean(false)).into()])),
         })
     });
 }
@@ -401,14 +402,14 @@ fn parse_moving_into_scope() {
         Declaration {
             identifier: Identifier(x),
             ty: Type::Named(int),
-            value: Some(Box::new(Literal(Integer(one)))),
+            value: Some(Box::new(Literal(Integer(one)).into())),
         }
         Declaration {
             identifier: Identifier(y),
             ty: Type::Named(int),
             value: Some(Box::new(Scope {
-                expressions: vec![Expression::Identifier(Identifier(x))]
-            })),
+                expressions: vec![Expression::Identifier(Identifier(x)).into()]
+            }.into())),
         }
     });
 }
@@ -425,7 +426,7 @@ fn parse_function_declaration() {
     }{
         Function {
             params: vec![Identifier(x)],
-            expressions: vec![Expression::Identifier(Identifier(x))],
+            expressions: vec![Expression::Identifier(Identifier(x)).into()],
             parameter_ty: Type::Named(int),
             return_ty: Type::Named(int),
         }
@@ -449,15 +450,15 @@ fn parse_function_declaration_and_calling() {
             identifier: Identifier(fun),
             value: Some(Box::new(Function {
                 params: vec![Identifier(x)],
-                expressions: vec![Expression::Identifier(Identifier(x))],
+                expressions: vec![Expression::Identifier(Identifier(x)).into()],
                 parameter_ty: Type::Named(int),
                 return_ty: Type::Named(int),
-            })),
-            ty: Type::Function(Box::new(Type::Named(int)), Box::new(Type::Named(int))),
+            }.into())),
+            ty: Type::Function(Box::new(Type::Named(int)), Box::new(Type::Named(int)), None),
         }
         Operation(Calling {
             name: Identifier(fun),
-            parameters: vec![Literal(Integer(one))]
+            parameters: vec![Literal(Integer(one)).into()]
         })
     });
 }
