@@ -35,6 +35,7 @@ pub enum Expression<T> {
     Literal(Literal),
     Identifier(Identifier),
     Operation(Operation<T>),
+    // TODO: Ensure that invalid ifs are impossible
     If(If<T>),
     Declaration {
         identifier: Identifier,
