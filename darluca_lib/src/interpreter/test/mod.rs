@@ -328,7 +328,7 @@ fn interpret_else_if() {
 }
 
 #[test]
-fn intepret_moving_into_scope() {
+fn interpret_moving_into_scope() {
     let mut interner = Interner::new();
     let int = interner.intern("I32").unwrap();
     assert_parse!(interner {

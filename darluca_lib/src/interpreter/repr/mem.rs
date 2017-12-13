@@ -36,7 +36,9 @@ impl<D> Memory<D> {
     }
 
     pub fn create(&mut self, i: Identifier, v: D) -> Option<D> {
-        self.scopes.last_mut().and_then(|l| l.insert(i, v))
+        self.scopes.last_mut()
+            .expect("Tried to create without scope")
+            .insert(i, v)
     }
 
     pub fn clear(&mut self) {
