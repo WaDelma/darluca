@@ -17,7 +17,6 @@ macro_rules! assert_parse {
         {
             #![allow(unused)]
             use interpreter::Memory;
-            use symtern::prelude::*;
             use std::collections::HashMap;
 
             let tokens = {
@@ -36,7 +35,7 @@ macro_rules! assert_parse {
             $(
                 let mut expected = HashMap::new();
                 $(
-                    let interned = $interner.intern(stringify!($var)).unwrap();
+                    let interned = $interner.intern(stringify!($var));
                     expected.insert(Identifier(interned), $val);
                 )*
                 let scope = &memory.used_scopes[memory.used_scopes.len() - n];
@@ -61,7 +60,7 @@ macro_rules! assert_parse {
 #[test]
 fn interpret_add_and_declaration() {
     let mut interner = Interner::new();
-    let int = interner.intern("I32").unwrap();
+    let int = interner.intern("I32");
     assert_parse!(interner {
         let x: I32 = (1 + 2)
     }{
@@ -72,7 +71,7 @@ fn interpret_add_and_declaration() {
 #[test]
 fn interpret_add_from_variable() {
     let mut interner = Interner::new();
-    let int = interner.intern("I32").unwrap();
+    let int = interner.intern("I32");
     assert_parse!(interner {
         let y: I32 = 2
         let x: I32 = (3 + y)
@@ -85,7 +84,7 @@ fn interpret_add_from_variable() {
 #[test]
 fn interpret_assign() {
     let mut interner = Interner::new();
-    let int = interner.intern("I32").unwrap();
+    let int = interner.intern("I32");
     assert_parse!(interner {
         let x: I32 = 1
         x = 2
@@ -97,7 +96,7 @@ fn interpret_assign() {
 #[test]
 fn interpret_multiple_declarations() {
     let mut interner = Interner::new();
-    let int = interner.intern("I32").unwrap();
+    let int = interner.intern("I32");
     assert_parse!(interner {
         let x: I32 = 1
         let y: I32 = 2
@@ -110,7 +109,7 @@ fn interpret_multiple_declarations() {
 #[test]
 fn interpret_move() {
     let mut interner = Interner::new();
-    let int = interner.intern("I32").unwrap();
+    let int = interner.intern("I32");
     assert_parse!(interner {
         let x: I32 = 1
         let y: I32 = x
@@ -123,7 +122,7 @@ fn interpret_move() {
 #[test]
 fn interpret_move_on_assign() {
     let mut interner = Interner::new();
-    let int = interner.intern("I32").unwrap();
+    let int = interner.intern("I32");
     assert_parse!(interner {
         let y: I32 = 1
         let x: I32 = y = 2
@@ -136,7 +135,7 @@ fn interpret_move_on_assign() {
 #[test]
 fn interpret_declaration_declaration() {
     let mut interner = Interner::new();
-    let int = interner.intern("I32").unwrap();
+    let int = interner.intern("I32");
     assert_parse!(interner {
         let x: [,] = let y: I32 = 1
     }{
@@ -148,7 +147,7 @@ fn interpret_declaration_declaration() {
 #[test]
 fn interpret_tuple() {
     let mut interner = Interner::new();
-    let int = interner.intern("I32").unwrap();
+    let int = interner.intern("I32");
     assert_parse!(interner {
         let x: [I32, I32, I32,] = [1, 2, 3,]
     }{
@@ -168,7 +167,7 @@ fn interpret_tuple() {
 #[test]
 fn interpret_tuple_tuple() {
     let mut interner = Interner::new();
-    let int = interner.intern("I32").unwrap();
+    let int = interner.intern("I32");
     assert_parse!(interner {
         let x: [[I32,],] = [[(1 + 1),],]
     }{
@@ -188,7 +187,7 @@ fn interpret_tuple_tuple() {
 #[test]
 fn interpret_tuple_indexing() {
     let mut interner = Interner::new();
-    let int = interner.intern("I32").unwrap();
+    let int = interner.intern("I32");
     assert_parse!(interner {
         let x: [I32, I32, I32,] = [1, 2, 3,]
         let y: I32 = x[1]
@@ -211,7 +210,7 @@ fn interpret_tuple_indexing() {
 #[test]
 fn interpret_union() {
     let mut interner = Interner::new();
-    let int = interner.intern("I32").unwrap();
+    let int = interner.intern("I32");
     assert_parse!(interner {
         let x: [I32|I32|I32|] = [1|_|_|]
     }{
@@ -229,7 +228,7 @@ fn interpret_union() {
 #[test]
 fn interpret_union_union() {
     let mut interner = Interner::new();
-    let int = interner.intern("I32").unwrap();
+    let int = interner.intern("I32");
     assert_parse!(interner {
         let x: [[I32|I32|]|I32|I32|] = [[_|2|]|_|_|]
     }{
@@ -254,7 +253,7 @@ fn interpret_union_union() {
 #[test]
 fn interpret_scope() {
     let mut interner = Interner::new();
-    let int = interner.intern("I32").unwrap();
+    let int = interner.intern("I32");
     assert_parse!(interner {
         let y: I32 = {
             let x: I32 = 1
@@ -270,7 +269,7 @@ fn interpret_scope() {
 #[test]
 fn interpret_boolean() {
     let mut interner = Interner::new();
-    let boolean = interner.intern("Bool").unwrap();
+    let boolean = interner.intern("Bool");
     assert_parse!(interner {
         let x: Bool = true
         let y: Bool = false
@@ -283,7 +282,7 @@ fn interpret_boolean() {
 #[test]
 fn interpret_if() {
     let mut interner = Interner::new();
-    let int = interner.intern("I32").unwrap();
+    let int = interner.intern("I32");
     assert_parse!(interner {
         let x: I32 = if true {
             1
@@ -298,7 +297,7 @@ fn interpret_if() {
 #[test]
 fn interpret_else() {
     let mut interner = Interner::new();
-    let int = interner.intern("I32").unwrap();
+    let int = interner.intern("I32");
     assert_parse!(interner {
         let x: I32 = if false {
             1
@@ -313,7 +312,7 @@ fn interpret_else() {
 #[test]
 fn interpret_else_if() {
     let mut interner = Interner::new();
-    let int = interner.intern("I32").unwrap();
+    let int = interner.intern("I32");
     assert_parse!(interner {
         let x: I32 = if false {
             1
@@ -330,7 +329,7 @@ fn interpret_else_if() {
 #[test]
 fn interpret_moving_into_scope() {
     let mut interner = Interner::new();
-    let int = interner.intern("I32").unwrap();
+    let int = interner.intern("I32");
     assert_parse!(interner {
         let x: I32 = 1
         let y: I32 = {
@@ -345,9 +344,9 @@ fn interpret_moving_into_scope() {
 #[test]
 fn interpret_function() {
     let mut interner = Interner::new();
-    let x = interner.intern("x").unwrap();
-    let int = interner.intern("I32").unwrap();
-    let one = interner.intern("1").unwrap();
+    let x = interner.intern("x");
+    let int = interner.intern("I32");
+    let one = interner.intern("1");
     // TODO: Figure out how to reproduce typechecking here. Or some other way to test this.
     let mut typechecker = Typechecker::new();
     assert_parse!(interner {
@@ -383,8 +382,8 @@ fn interpret_function() {
 // TODO: Need to implement super type for closures to be able to do these tests.
 fn interpret_closure() {
     let mut interner = Interner::new();
-    let int = interner.intern("I32").unwrap();
-    let closure = interner.intern("fun¤0").unwrap();
+    let int = interner.intern("I32");
+    let closure = interner.intern("fun¤0");
     assert_parse!(interner {
         let fun: ([,] -> I32) = {
             let x: I32 = 1
@@ -405,8 +404,8 @@ fn interpret_closure() {
 #[test]
 fn interpret_closure_closure() {
     let mut interner = Interner::new();
-    let int = interner.intern("I32").unwrap();
-    let closure = interner.intern("fun¤0").unwrap();
+    let int = interner.intern("I32");
+    let closure = interner.intern("fun¤0");
     assert_parse!(interner {
         let fun: (I32 -> I32) = {
             let x: I32 = 1

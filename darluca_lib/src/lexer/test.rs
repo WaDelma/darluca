@@ -40,9 +40,9 @@ macro_rules! assert_tokens {
 #[test]
 fn tokenize_declaration() {
     let mut interner = Interner::new();
-    let x = interner.intern("x").unwrap();
-    let one = interner.intern("1").unwrap();
-    let int = interner.intern("I32").unwrap();
+    let x = interner.intern("x");
+    let one = interner.intern("1");
+    let int = interner.intern("I32");
     assert_tokens!(interner {
         let x: I32 = 1
     }{
@@ -58,8 +58,8 @@ fn tokenize_declaration() {
 #[test]
 fn tokenize_tuple() {
     let mut interner = Interner::new();
-    let one = interner.intern("1").unwrap();
-    let two = interner.intern("2").unwrap();
+    let one = interner.intern("1");
+    let two = interner.intern("2");
     assert_tokens!(interner {
         [1, 2,]
     }{
@@ -86,9 +86,9 @@ fn tokenize_initial() {
 #[test]
 fn tokenize_index_tuple() {
     let mut interner = Interner::new();
-    let zero = interner.intern("0").unwrap();
-    let one = interner.intern("1").unwrap();
-    let two = interner.intern("2").unwrap();
+    let zero = interner.intern("0");
+    let one = interner.intern("1");
+    let two = interner.intern("2");
     assert_tokens!(interner {
         [1, 2,][0]
     }{
@@ -107,7 +107,7 @@ fn tokenize_index_tuple() {
 #[test]
 fn tokenize_union() {
     let mut interner = Interner::new();
-    let one = interner.intern("1").unwrap();
+    let one = interner.intern("1");
     assert_tokens!(interner {
         [1|_|]
     }{
@@ -134,8 +134,8 @@ fn tokenize_terminal() {
 #[test]
 fn tokenize_addition() {
     let mut interner = Interner::new();
-    let one = interner.intern("1").unwrap();
-    let two = interner.intern("2").unwrap();
+    let one = interner.intern("1");
+    let two = interner.intern("2");
     assert_tokens!(interner {
         (1 + 2)
     }{
@@ -185,8 +185,8 @@ fn tokenize_if_else() {
 #[test]
 fn tokenize_function_declaration() {
     let mut interner = Interner::new();
-    let int = interner.intern("I32").unwrap();
-    let x = interner.intern("x").unwrap();
+    let int = interner.intern("I32");
+    let x = interner.intern("x");
     assert_tokens!(interner {
         [x: I32,] -> I32 {
             x
@@ -209,10 +209,10 @@ fn tokenize_function_declaration() {
 #[test]
 fn tokenize_function_declaration_and_calling() {
     let mut interner = Interner::new();
-    let fun = interner.intern("fun").unwrap();
-    let int = interner.intern("I32").unwrap();
-    let x = interner.intern("x").unwrap();
-    let one = interner.intern("1").unwrap();
+    let fun = interner.intern("fun");
+    let int = interner.intern("I32");
+    let x = interner.intern("x");
+    let one = interner.intern("1");
     assert_tokens!(interner {
         let fun: (I32 -> I32) = [x: I32,] -> I32 {
             x

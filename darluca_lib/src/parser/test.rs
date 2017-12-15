@@ -44,9 +44,9 @@ macro_rules! assert_parse {
 #[test]
 fn parse_declaration() {
     let mut interner = Interner::new();
-    let x = interner.intern("x").unwrap();
-    let one = interner.intern("1").unwrap();
-    let int = interner.intern("I32").unwrap();
+    let x = interner.intern("x");
+    let one = interner.intern("1");
+    let int = interner.intern("I32");
     assert_parse!(interner {
         let x: I32 = 1
     }{
@@ -61,8 +61,8 @@ fn parse_declaration() {
 #[test]
 fn parse_empty_declaration() {
     let mut interner = Interner::new();
-    let x = interner.intern("x").unwrap();
-    let int = interner.intern("I32").unwrap();
+    let x = interner.intern("x");
+    let int = interner.intern("I32");
     assert_parse!(interner {
         let x: I32
     }{
@@ -77,7 +77,7 @@ fn parse_empty_declaration() {
 #[test]
 fn parse_terminal_type() {
     let mut interner = Interner::new();
-    let x = interner.intern("x").unwrap();
+    let x = interner.intern("x");
     assert_parse!(interner {
         let x: [,]
     }{
@@ -92,8 +92,8 @@ fn parse_terminal_type() {
 #[test]
 fn parse_tuple_type() {
     let mut interner = Interner::new();
-    let x = interner.intern("x").unwrap();
-    let int = interner.intern("I32").unwrap();
+    let x = interner.intern("x");
+    let int = interner.intern("I32");
     assert_parse!(interner {
         let x: [I32, I32,]
     }{
@@ -111,8 +111,8 @@ fn parse_tuple_type() {
 #[test]
 fn parse_tuple_tuple_type() {
     let mut interner = Interner::new();
-    let x = interner.intern("x").unwrap();
-    let int = interner.intern("I32").unwrap();
+    let x = interner.intern("x");
+    let int = interner.intern("I32");
     assert_parse!(interner {
         let x: [I32, [I32,],]
     }{
@@ -132,7 +132,7 @@ fn parse_tuple_tuple_type() {
 #[test]
 fn parse_initial_type() {
     let mut interner = Interner::new();
-    let x = interner.intern("x").unwrap();
+    let x = interner.intern("x");
     assert_parse!(interner {
         let x: [|]
     }{
@@ -147,8 +147,8 @@ fn parse_initial_type() {
 #[test]
 fn parse_union_type() {
     let mut interner = Interner::new();
-    let x = interner.intern("x").unwrap();
-    let int = interner.intern("I32").unwrap();
+    let x = interner.intern("x");
+    let int = interner.intern("I32");
     assert_parse!(interner {
         let x: [I32|I32|]
     }{
@@ -166,8 +166,8 @@ fn parse_union_type() {
 #[test]
 fn parse_union_union_type() {
     let mut interner = Interner::new();
-    let x = interner.intern("x").unwrap();
-    let int = interner.intern("I32").unwrap();
+    let x = interner.intern("x");
+    let int = interner.intern("I32");
     assert_parse!(interner {
         let x: [I32|[I32|]|]
     }{
@@ -187,9 +187,9 @@ fn parse_union_union_type() {
 #[test]
 fn parse_assignment() {
     let mut interner = Interner::new();
-    let x = interner.intern("x").unwrap();
-    let one = interner.intern("1").unwrap();
-    let int = interner.intern("I32").unwrap();
+    let x = interner.intern("x");
+    let one = interner.intern("1");
+    let int = interner.intern("I32");
     assert_parse!(interner {
         let x: I32
         x = 1
@@ -222,7 +222,7 @@ fn parse_scope() {
 #[test]
 fn parse_scope_with_declaration() {
     let mut interner = Interner::new();
-    let x = interner.intern("x").unwrap();
+    let x = interner.intern("x");
     assert_parse!(interner {
         {
             let x: [|]
@@ -254,8 +254,8 @@ fn parse_terminal() {
 #[test]
 fn parse_tuple() {
     let mut interner = Interner::new();
-    let one = interner.intern("1").unwrap();
-    let two = interner.intern("2").unwrap();
+    let one = interner.intern("1");
+    let two = interner.intern("2");
     assert_parse!(interner {
         [1, 2,]
     }{
@@ -271,9 +271,9 @@ fn parse_tuple() {
 #[test]
 fn parse_tuple_tuple() {
     let mut interner = Interner::new();
-    let one = interner.intern("1").unwrap();
-    let two = interner.intern("2").unwrap();
-    let three = interner.intern("3").unwrap();
+    let one = interner.intern("1");
+    let two = interner.intern("2");
+    let three = interner.intern("3");
     assert_parse!(interner {
         [1, [2, 3,],]
     }{
@@ -303,7 +303,7 @@ fn parse_initial() {
 #[test]
 fn parse_union() {
     let mut interner = Interner::new();
-    let one = interner.intern("1").unwrap();
+    let one = interner.intern("1");
     assert_parse!(interner {
         [1|_|]
     }{
@@ -318,7 +318,7 @@ fn parse_union() {
 #[test]
 fn parse_union_union() {
     let mut interner = Interner::new();
-    let two = interner.intern("2").unwrap();
+    let two = interner.intern("2");
     assert_parse!(interner {
         [[_|2|]|_|_|]
     }{
@@ -337,8 +337,8 @@ fn parse_union_union() {
 #[test]
 fn parse_addition() {
     let mut interner = Interner::new();
-    let one = interner.intern("1").unwrap();
-    let two = interner.intern("2").unwrap();
+    let one = interner.intern("1");
+    let two = interner.intern("2");
     assert_parse!(interner {
         (1 + 2)
     }{
@@ -389,10 +389,10 @@ fn parse_if_else() {
 #[test]
 fn parse_moving_into_scope() {
     let mut interner = Interner::new();
-    let int = interner.intern("I32").unwrap();
-    let x = interner.intern("x").unwrap();
-    let y = interner.intern("y").unwrap();
-    let one = interner.intern("1").unwrap();
+    let int = interner.intern("I32");
+    let x = interner.intern("x");
+    let y = interner.intern("y");
+    let one = interner.intern("1");
     assert_parse!(interner {
         let x: I32 = 1
         let y: I32 = {
@@ -417,8 +417,8 @@ fn parse_moving_into_scope() {
 #[test]
 fn parse_function_declaration() {
     let mut interner = Interner::new();
-    let int = interner.intern("I32").unwrap();
-    let x = interner.intern("x").unwrap();
+    let int = interner.intern("I32");
+    let x = interner.intern("x");
     assert_parse!(interner {
         [x: I32,] -> I32 {
             x
@@ -436,10 +436,10 @@ fn parse_function_declaration() {
 #[test]
 fn parse_function_declaration_and_calling() {
     let mut interner = Interner::new();
-    let fun = interner.intern("fun").unwrap();
-    let int = interner.intern("I32").unwrap();
-    let x = interner.intern("x").unwrap();
-    let one = interner.intern("1").unwrap();
+    let fun = interner.intern("fun");
+    let int = interner.intern("I32");
+    let x = interner.intern("x");
+    let one = interner.intern("1");
     assert_parse!(interner {
         let fun: (I32 -> I32) = [x: I32,] -> I32 {
             x

@@ -8,7 +8,6 @@ extern crate failure_derive;
 extern crate unicode_width;
 // TODO: Remove nom and symtern from repl dependencies.
 extern crate nom;
-extern crate symtern;
 
 use unicode_width::UnicodeWidthStr;
 
@@ -238,7 +237,7 @@ fn run(args: ArgMatches) -> Result<()> {
                                 if l.trim().len() > 1 {
                                     let l = &l[2..];
                                     // TODO: This is so bad code.
-                                    let val = memory.get(&Identifier(interner.intern(l).unwrap())).unwrap();
+                                    let val = memory.get(&Identifier(interner.intern(l))).unwrap();
                                     out.cwriteln(clear_style(), &format!("{}", val.ty().display(&interner).unwrap()))?;
                                 } else {
                                     out.cwriteln(info_style(), &format!("{} To get a type you need a variable:", fancy_plain(&args, "🛈", "i")))?;

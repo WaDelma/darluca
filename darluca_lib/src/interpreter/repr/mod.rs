@@ -3,6 +3,7 @@ use itertools::process_results;
 
 use std::iter::{once, repeat};
 use std::mem::replace;
+use std::fmt;
 
 use parser::ast::{self, Expr};
 use interner::{Interner, Symbol};
@@ -90,7 +91,7 @@ impl Memory<TypedValue> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+#[derive(PartialEq, Eq, Hash, Clone)]
 pub enum Value {
     // TODO: Is there difference between invalid value and initial object?
     Invalid,
@@ -104,6 +105,46 @@ pub enum Value {
         Vec<Expr<TypeKey>>,
         Vec<(ast::Identifier, TypedValue)>,
     ),
+}
+
+impl fmt::Debug for Value {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        use self::Value::*;
+        match *self {
+            Invalid => fmt.write_str("Invalid")?,
+            Tup(ref c) => c.fmt(fmt)?,
+            Uni(ref index, ref val, ref size) => {
+                fmt.write_str("[")?;
+                for _ in 0..*index {
+                    fmt.write_str("_|")?;
+                }
+                val.fmt(fmt)?;
+                fmt.write_str("|")?;
+                for _ in (index + 1)..*size {
+                    fmt.write_str("_|")?;
+                }
+                fmt.write_str("]")?;
+            },
+            Int(ref i) => {
+                fmt.write_str("Int(")?;
+                i.fmt(fmt)?;
+                fmt.write_str(")")?;
+            },
+            Bool(ref b) => {
+                fmt.write_str("Bool(")?;
+                b.fmt(fmt)?;
+                fmt.write_str(")")?;
+            },
+            Fun(ref params, ref exprs, ref closed) => {
+                params.fmt(fmt)?;
+                fmt.write_str(" -> ")?;
+                exprs.fmt(fmt)?;
+                fmt.write_str("/")?;
+                closed.fmt(fmt)?;
+            },
+        }
+        Ok(())
+    }
 }
 
 impl Value {
@@ -135,7 +176,7 @@ impl Value {
             Fun(ref params, ..) => {
                 f.push_str("[");
                 f.push_str(&process_results(
-                    params.iter().map(|v| interner.resolve(v.0)),
+                    params.iter().map(|v| interner.resolve(v.0).ok_or_else(|| ResolvingSymbolFailed(format!("{:?}", v)))),
                     |mut v| v.join(", "),
                 )?);
                 f.push_str(",] -> _");
@@ -149,13 +190,36 @@ impl Value {
 // Doesn't really help getting rid of interner though
 // as with custom types it's needed again.
 // Or should the we store the actual string here?
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+#[derive(PartialEq, Eq, Hash, Clone)]
 pub enum Ty {
     Unknown,
     Named(Symbol),
     Tuple(Vec<Ty>),
     Union(Vec<Ty>),
     Function(Box<Ty>, Box<Ty>, Option<Symbol>),
+}
+
+impl fmt::Debug for Ty {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        use self::Ty::*;
+        match *self {
+            Unknown => fmt.write_str("?")?,
+            Named(ref s) => s.id().fmt(fmt)?,
+            Union(ref c) | Tuple(ref c) => c.fmt(fmt)?,
+            Function(ref p, ref r, ref c) => {
+                fmt.write_str("[")?;
+                p.fmt(fmt)?;
+                fmt.write_str(",]")?;
+                fmt.write_str(" -> ")?;
+                r.fmt(fmt)?;
+                if let Some(ref c) = *c {
+                    fmt.write_str("/")?;
+                    c.fmt(fmt)?;
+                }
+            },
+        }
+        Ok(())
+    }
 }
 
 impl Ty {
@@ -171,13 +235,13 @@ impl Ty {
                 .chain(once(Ty::from_value(&**value, interner)))
                 .chain(repeat(Ok(Unknown)).take(size - index - 1))
                 .collect::<Result<Vec<_>>>()?),
-            Int(_) => Ty::Named(interner.intern("I32")?),
-            Bool(_) => Ty::Named(interner.intern("Bool")?),
+            Int(_) => Ty::Named(interner.intern("I32")),
+            Bool(_) => Ty::Named(interner.intern("Bool")),
             // TODO: Closures vs functions.
             Fun(_, _, ref c) => if c.is_empty() {
                 Ty::Function(Box::new(Unknown), Box::new(Unknown), None)
             } else {
-                Ty::Function(Box::new(Unknown), Box::new(Unknown), Some(interner.generate("fun")?))
+                Ty::Function(Box::new(Unknown), Box::new(Unknown), Some(interner.generate("fun")))
             }
         })
     }
@@ -224,13 +288,13 @@ impl Ty {
                 )?);
                 f.push_str("|]");
             }
-            Named(ref i) => f.push_str(&format!("{}", interner.resolve(*i)?)),
+            Named(ref i) => f.push_str(&format!("{}", interner.resolve(*i).ok_or_else(|| ResolvingSymbolFailed(format!("{:?}", i)))?)),
             Function(ref param, ref ret, ref uniq) => if let Some(ref uniq) = *uniq {
                 f.push_str(&format!(
                     "{} -> {}/{}",
                     param.display(interner)?,
                     ret.display(interner)?,
-                    interner.resolve(*uniq)?
+                    interner.resolve(*uniq).ok_or_else(|| ResolvingSymbolFailed(format!("{:?}", uniq)))?
                 ))
             } else {
                 f.push_str(&format!(
@@ -272,18 +336,18 @@ pub fn invalid() -> TypedValue {
     }
 }
 
-pub fn bool_typed(value: bool, interner: &mut Interner) -> Result<TypedValue> {
-    Ok(TypedValue {
+pub fn bool_typed(value: bool, interner: &mut Interner) -> TypedValue {
+    TypedValue {
         value: Bool(value),
-        ty: Ty::Named(interner.intern("Bool")?),
-    })
+        ty: Ty::Named(interner.intern("Bool")),
+    }
 }
 
-pub fn int_typed(value: i32, interner: &mut Interner) -> Result<TypedValue> {
-    Ok(TypedValue {
+pub fn int_typed(value: i32, interner: &mut Interner) -> TypedValue {
+    TypedValue {
         value: Int(value),
-        ty: Ty::Named(interner.intern("I32")?),
-    })
+        ty: Ty::Named(interner.intern("I32")),
+    }
 }
 
 pub fn union_typed(index: usize, value: TypedValue, size: usize) -> TypedValue {

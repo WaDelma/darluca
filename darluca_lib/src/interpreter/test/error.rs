@@ -11,7 +11,6 @@ macro_rules! assert_error {
             #![allow(unused)]
             use interpreter::Memory;
             use parser::ast::Identifier;
-            use symtern::prelude::*;
             use std::collections::HashMap;
 
             let tokens = {

@@ -7,7 +7,7 @@ extern crate failure_derive;
 extern crate itertools;
 #[macro_use]
 extern crate nom;
-extern crate symtern;
+extern crate string_interner;
 extern crate ena;
 
 pub mod lexer;

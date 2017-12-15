@@ -43,7 +43,7 @@ impl<'ctx> Lexer<'ctx> {
             ),
             |ident| {
                 str::from_utf8(ident)
-                    .map(|i| self.interner.intern(i).unwrap())
+                    .map(|i| self.interner.intern(i))
                     .map(Identifier)
                     .expect("is_alphabetic should ensure that ident is valid utf-8.")
             }
@@ -61,7 +61,7 @@ impl<'ctx> Lexer<'ctx> {
             ),
             |ident| {
                 str::from_utf8(ident)
-                    .map(|i| self.interner.intern(i).unwrap())
+                    .map(|i| self.interner.intern(i))
                     .map(Type)
                     .expect("is_alphabetic should ensure that ident is valid utf-8.")
             }
@@ -74,7 +74,7 @@ impl<'ctx> Lexer<'ctx> {
                 take_while1!(is_digit),
                 |integer| {
                     str::from_utf8(integer)
-                        .map(|i| self.interner.intern(i).unwrap())
+                        .map(|i| self.interner.intern(i))
                         .map(Integer)
                         .expect("is_digit should ensure that integer is valid utf-8.")
                 }

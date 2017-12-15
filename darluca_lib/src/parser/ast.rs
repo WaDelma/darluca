@@ -1,3 +1,5 @@
+use std::fmt;
+
 use interner::Symbol;
 use typechecker::Type;
 
@@ -93,8 +95,16 @@ pub struct Union<T> {
     pub size: usize,
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(PartialEq, Eq, Hash, Clone, Copy)]
 pub struct Identifier(pub Symbol);
+
+impl fmt::Debug for Identifier {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.write_str("Ident(")?;
+        (self.0).id().fmt(fmt)?;
+        fmt.write_str(")")
+    }
+}
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Literal {

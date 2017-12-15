@@ -47,7 +47,8 @@ pub enum InterpreterError {
         ty: String,
         action: String,
     },
-    #[fail(display = "ICE: Interning failed: {:?}", _0)] InternFailure(#[cause] ::symtern::Error),
+    #[fail(display = "ICE: Resolving interned string with symbol `{}` failed", _0)]
+    ResolvingSymbolFailed(String),
 }
 
 fn unknown<A: Into<String>, B: Into<String>, C: Into<String>>(target: A, action: B, name: C) -> InterpreterError {
@@ -63,12 +64,6 @@ fn unoperable<A: Into<String>, B: Into<String>, C: Into<String>>(value: A, ty: B
         value: value.into(),
         ty: ty.into(),
         action: action.into(),
-    }
-}
-
-impl From<::symtern::Error> for InterpreterError {
-    fn from(e: ::symtern::Error) -> Self {
-        InternFailure(e)
     }
 }
 
@@ -143,7 +138,7 @@ fn execute(
                     if is_function {
                         None
                     } else {
-                        Some(interner.generate("fun")?)
+                        Some(interner.generate("fun"))
                     }
                 ),
                 interner,
@@ -169,9 +164,9 @@ fn execute(
                     let n = interner.resolve(*n).expect("No such literal");
                     str::parse(n).expect("Literal couldn't be parsed to integer")
                 };
-                int_typed(val, interner)?
+                int_typed(val, interner)
             }
-            Boolean(ref b) => bool_typed(*b, interner)?,
+            Boolean(ref b) => bool_typed(*b, interner),
         },
         Identifier(ref i) => move_or_copy(i, memory, interner)?,
         Tuple { ref value } => tuple_typed(value
@@ -199,7 +194,7 @@ fn execute(
             } => {
                 let value = execute(value, memory, interner)?;
                 let n = NonExistentAssign(
-                    interner.resolve(identifier.0)?.into(),
+                    interner.resolve(identifier.0).ok_or_else(|| ResolvingSymbolFailed(format!("{:?}", identifier.0)))?.into(),
                     value.value().display(interner)?,
                     value.ty().display(interner)?,
                 );
@@ -228,13 +223,13 @@ fn execute(
                     }
                 },
                 interner,
-            )?,
+            ),
             Indexing {
                 ref target,
                 ref index,
             } => {
                 let index = execute(index, memory, interner)?;
-                let container = memory.get_mut(target).ok_or(unknown("variable", "index", interner.resolve(target.0)?))?;
+                let container = memory.get_mut(target).ok_or(unknown("variable", "index", interner.resolve(target.0).ok_or_else(|| ResolvingSymbolFailed(format!("{:?}", target.0)))?))?;
                 // TODO: This is ugly. Refactor pls.
                 match container.split_mut_and_ref() {
                     (&mut Tup(ref mut value), &Ty::Tuple(ref ty)) => {
@@ -313,7 +308,7 @@ fn execute_if(
 fn move_or_copy(identifier: &ast::Identifier, memory: &mut Memory<TypedValue>, interner: &Interner) -> Result<TypedValue> {
     {
         let var = memory.get(identifier)
-            .ok_or(unknown("variable", "access", interner.resolve(identifier.0)?))?;
+            .ok_or(unknown("variable", "access", interner.resolve(identifier.0).ok_or_else(|| ResolvingSymbolFailed(format!("{:?}", identifier.0)))?))?;
         if match *var.ty() {
             Ty::Function(_, _, ref uniq) => uniq.is_none(),
             _ => false,
@@ -322,7 +317,7 @@ fn move_or_copy(identifier: &ast::Identifier, memory: &mut Memory<TypedValue>, i
         }
     }
     memory.replace(identifier, invalid(), interner)
-        .ok_or(unknown("variable", "access", interner.resolve(identifier.0)?))?
+        .ok_or(unknown("variable", "access", interner.resolve(identifier.0).ok_or_else(|| ResolvingSymbolFailed(format!("{:?}", identifier.0)))?))?
 }
 
 fn add_not_closed(
