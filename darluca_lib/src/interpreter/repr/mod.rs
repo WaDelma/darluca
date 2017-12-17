@@ -17,97 +17,104 @@ use self::Value::*;
 pub mod mem;
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
-pub struct TypedValue {
-    value: Value,
-    ty: Ty,
+pub struct TypedValue<V> {
+    value: Value<V>,
+    ty: Type,
 }
 
-impl TypedValue {
-    pub fn unchecked(value: Value, ty: Ty) -> Self {
+impl<T> TypedValue<T> {
+    pub fn unchecked(value: Value<T>, ty: Type) -> Self {
         TypedValue { value, ty }
     }
 
-    pub fn new(value: Value, ty: Ty, interner: &mut Interner) -> Result<Self> {
-        let val_ty = Ty::from_value(&value, interner)?;
-        if val_ty.is_subtype_of(&ty) {
+    pub fn new(value: Value<T>, ty: Type, interner: &mut Interner) -> Result<Self> {
+        // let val_ty = Ty::from_value(&value, interner)?;
+        // if val_ty.is_subtype_of(&ty) {
             Ok(TypedValue::unchecked(value, ty))
-        } else {
-            Err(ValueTypeMismatch(
-                value.display(interner)?,
-                val_ty.display(interner)?,
-                ty.display(interner)?,
-            ))
-        }
+        // } else {
+        //     Err(ValueTypeMismatch(
+        //         value.display(interner)?,
+        //         val_ty.display(interner)?,
+        //         ty.display(interner)?,
+        //     ))
+        // }
     }
 
-    pub fn assign(self, value: TypedValue, interner: &mut Interner) -> Result<Self> {
-        if value.ty.is_subtype_of(&self.ty) {
+    pub fn assign(self, value: TypedValue<T>, interner: &mut Interner) -> Result<Self> {
+        // if value.ty.is_subtype_of(&self.ty) {
             Ok(TypedValue::unchecked(value.value, self.ty))
-        } else {
-            Err(ValueTypeMismatch(
-                value.value.display(interner)?,
-                value.ty.display(interner)?,
-                self.ty.display(interner)?,
-            ))
-        }
+        // } else {
+        //     Err(ValueTypeMismatch(
+        //         value.value.display(interner)?,
+        //         value.ty.display(interner)?,
+        //         self.ty.display(interner)?,
+        //     ))
+        // }
     }
 
-    pub fn into_value(self) -> Value {
+    pub fn into_value(self) -> Value<T> {
         self.value
     }
 
-    pub fn split_mut_and_ref(&mut self) -> (&mut Value, &Ty) {
+    pub fn split_mut_and_ref(&mut self) -> (&mut Value<T>, &Type) {
         (&mut self.value, &self.ty)
     }
 
-    pub fn value(&self) -> &Value {
+    pub fn value(&self) -> &Value<T> {
         &self.value
     }
 
-    pub fn ty(&self) -> &Ty {
+    pub fn ty(&self) -> &Type {
         &self.ty
+    }
+
+    pub fn cleanse(self) -> TypedValue<()> {
+        TypedValue {
+            value: self.value.cleanse(),
+            ty: self.ty,
+        }
     }
 }
 
-impl Memory<TypedValue> {
+impl<T> Memory<TypedValue<T>> {
     pub fn replace(
         &mut self,
         i: &ast::Identifier,
-        mut v: TypedValue,
+        mut v: TypedValue<T>,
         interner: &Interner,
-    ) -> Option<Result<TypedValue>> {
+    ) -> Option<Result<TypedValue<T>>> {
         self.get_mut(i).map(|t| {
-            if v.ty.is_subtype_of(&t.ty) {
+            // if v.ty.is_subtype_of(&t.ty) {
                 v.ty = t.ty.clone();
                 Ok(replace(t, v))
-            } else {
-                Err(ValueTypeMismatch(
-                    v.value.display(interner)?,
-                    v.ty.display(interner)?,
-                    t.ty.display(interner)?,
-                ))
-            }
+            // } else {
+            //     Err(ValueTypeMismatch(
+            //         v.value.display(interner)?,
+            //         v.ty.display(interner)?,
+            //         t.ty.display(interner)?,
+            //     ))
+            // }
         })
     }
 }
 
 #[derive(PartialEq, Eq, Hash, Clone)]
-pub enum Value {
+pub enum Value<V> {
     // TODO: Is there difference between invalid value and initial object?
     Invalid,
-    Tup(Vec<Value>),
-    Uni(usize, Box<Value>, usize),
+    Tup(Vec<Value<V>>),
+    Uni(usize, Box<Value<V>>, usize),
     Int(i32),
     Bool(bool),
     // TODO: Should the function value carry it's type? The closed values already do...
     Fun(
         Vec<ast::Identifier>,
-        Vec<Expr<TypeKey>>,
-        Vec<(ast::Identifier, TypedValue)>,
+        Vec<Expr<V>>,
+        Vec<(ast::Identifier, TypedValue<V>)>,
     ),
 }
 
-impl fmt::Debug for Value {
+impl<V: fmt::Debug> fmt::Debug for Value<V> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         use self::Value::*;
         match *self {
@@ -147,7 +154,26 @@ impl fmt::Debug for Value {
     }
 }
 
-impl Value {
+impl<V> Value<V> {
+    pub fn cleanse(self) -> Value<()> {
+        match self {
+            Invalid => Invalid,
+            Tup(vs) => Tup(vs.into_iter().map(|v| v.cleanse()).collect()),
+            Uni(index, val, size) => Uni(index, Box::new(val.cleanse()), size),
+            Int(i) => Int(i),
+            Bool(b) => Bool(b),
+            Fun(
+                ids,
+                exprs,
+                closed,
+            ) => Fun(
+                ids,
+                exprs.into_iter().map(|e| e.map_data(&mut |_| ())).collect(),
+                closed.into_iter().map(|(k, v)| (k, v.cleanse())).collect(),
+            ),
+        }
+    }
+
     pub fn display(&self, interner: &Interner) -> Result<String> {
         let mut f = String::new();
         match *self {
@@ -186,44 +212,8 @@ impl Value {
     }
 }
 
-// TODO: Make primitives variants?
-// Doesn't really help getting rid of interner though
-// as with custom types it's needed again.
-// Or should the we store the actual string here?
-#[derive(PartialEq, Eq, Hash, Clone)]
-pub enum Ty {
-    Unknown,
-    Named(Symbol),
-    Tuple(Vec<Ty>),
-    Union(Vec<Ty>),
-    Function(Box<Ty>, Box<Ty>, Option<Symbol>),
-}
-
-impl fmt::Debug for Ty {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        use self::Ty::*;
-        match *self {
-            Unknown => fmt.write_str("?")?,
-            Named(ref s) => s.id().fmt(fmt)?,
-            Union(ref c) | Tuple(ref c) => c.fmt(fmt)?,
-            Function(ref p, ref r, ref c) => {
-                fmt.write_str("[")?;
-                p.fmt(fmt)?;
-                fmt.write_str(",]")?;
-                fmt.write_str(" -> ")?;
-                r.fmt(fmt)?;
-                if let Some(ref c) = *c {
-                    fmt.write_str("/")?;
-                    c.fmt(fmt)?;
-                }
-            },
-        }
-        Ok(())
-    }
-}
-
-impl Ty {
-    pub fn from_value(value: &Value, interner: &mut Interner) -> Result<Self> {
+/*impl Ty {
+    pub fn from_value<V>(value: &Value<V>, interner: &mut Interner) -> Result<Self> {
         use self::Ty::*;
         Ok(match *value {
             Invalid => Unknown,
@@ -321,48 +311,49 @@ impl<'a> From<&'a Type> for Ty {
         }
     }
 }
+*/
 
-pub fn terminal() -> TypedValue {
+pub fn terminal() -> TypedValue<TypeKey> {
     TypedValue {
         value: Tup(vec![]),
-        ty: Ty::Tuple(vec![]),
+        ty: Type::Tuple(vec![]),
     }
 }
 
-pub fn invalid() -> TypedValue {
+pub fn invalid() -> TypedValue<TypeKey> {
     TypedValue {
         value: Invalid,
-        ty: Ty::Unknown,
+        ty: Type::Unknown,
     }
 }
 
-pub fn bool_typed(value: bool, interner: &mut Interner) -> TypedValue {
+pub fn bool_typed(value: bool, interner: &mut Interner) -> TypedValue<TypeKey> {
     TypedValue {
         value: Bool(value),
-        ty: Ty::Named(interner.intern("Bool")),
+        ty: Type::Named(interner.intern("Bool")),
     }
 }
 
-pub fn int_typed(value: i32, interner: &mut Interner) -> TypedValue {
+pub fn int_typed(value: i32, interner: &mut Interner) -> TypedValue<TypeKey> {
     TypedValue {
         value: Int(value),
-        ty: Ty::Named(interner.intern("I32")),
+        ty: Type::Named(interner.intern("I32")),
     }
 }
 
-pub fn union_typed(index: usize, value: TypedValue, size: usize) -> TypedValue {
-    let tys = repeat(Ty::Unknown)
+pub fn union_typed(index: usize, value: TypedValue<TypeKey>, size: usize) -> TypedValue<TypeKey> {
+    let tys = repeat(Type::Unknown)
         .take(index)
         .chain(once(value.ty))
-        .chain(repeat(Ty::Unknown).take(size - index - 1))
+        .chain(repeat(Type::Unknown).take(size - index - 1))
         .collect();
     TypedValue {
         value: Uni(index, Box::new(value.value), size),
-        ty: Ty::Union(tys),
+        ty: Type::Union(tys),
     }
 }
 
-pub fn tuple_typed(values: Vec<TypedValue>) -> TypedValue {
+pub fn tuple_typed(values: Vec<TypedValue<TypeKey>>) -> TypedValue<TypeKey> {
     let (mut vals, mut tys) = (
         Vec::with_capacity(values.len()),
         Vec::with_capacity(values.len()),
@@ -373,6 +364,6 @@ pub fn tuple_typed(values: Vec<TypedValue>) -> TypedValue {
     }
     TypedValue {
         value: Tup(vals),
-        ty: Ty::Tuple(tys),
+        ty: Type::Tuple(tys),
     }
 }

@@ -21,6 +21,51 @@ impl<T> Expr<T> {
             data
         }
     }
+
+    pub fn map_data<I, F>(self, f: &mut F) -> Expr<I>
+        where F: FnMut(T) -> I
+    {
+        use self::Expression::*;
+        let Expr { expression, data } = self;
+        let expression = match expression {
+            Operation(o) => Operation(o.map_data(f)),
+            If(i) => If(i.map_data(f)),
+            Declaration { identifier, ty, value, ..} => Declaration {
+                identifier,
+                ty,
+                value: value.map(|v| v.map_data(f)).map(Box::new),
+            },
+            Function {
+                params,
+                expressions,
+                parameter_ty,
+                return_ty,
+            } => Function {
+                params,
+                expressions: expressions.into_iter().map(|e| e.map_data(f)).collect(),
+                parameter_ty,
+                return_ty,
+            },
+            Tuple {
+                value,
+            } => Tuple {
+                value: value.into_iter().map(|e| e.map_data(f)).collect(),
+            },
+            Union(Some(u)) => Union(Some(u.map_data(f))),
+            Union(None) => Union(None),
+            Scope {
+                expressions,
+            } => Scope {
+                expressions: expressions.into_iter().map(|e| e.map_data(f)).collect(),
+            },
+            Literal(l) => Literal(l),
+            Identifier(i) => Identifier(i),
+        };
+        Expr {
+            expression: expression,
+            data: f(data)
+        }
+    }
 }
 
 impl From<Expression<()>> for Expr<()> {
@@ -69,6 +114,26 @@ pub enum If<T> {
     Else(Vec<Expr<T>>),
 }
 
+impl<T> If<T> {
+    pub fn map_data<I, F>(self, f: &mut F) -> If<I>
+        where F: FnMut(T) -> I
+    {
+        use self::If::*;
+        match self {
+            Condition {
+                condition,
+                expressions,
+                otherwise,
+            } => Condition {
+                condition: Box::new(condition.map_data(f)),
+                expressions: expressions.into_iter().map(|e| e.map_data(f)).collect(),
+                otherwise: Box::new(otherwise.map_data(f)),
+            },
+            Else(expressions) => Else(expressions.into_iter().map(|e| e.map_data(f)).collect()),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum Operation<T> {
     Assignment {
@@ -88,6 +153,42 @@ pub enum Operation<T> {
     },
 }
 
+impl<T> Operation<T> {
+    pub fn map_data<I, F>(self, f: &mut F) -> Operation<I>
+        where F: FnMut(T) -> I
+    {
+        use self::Operation::*;
+        match self {
+            Assignment {
+                identifier,
+                value,
+            } => Assignment {
+                identifier,
+                value: Box::new(value.map_data(f)),
+            },
+            Addition {
+                parameters,
+            } => Addition {
+                parameters: parameters.into_iter().map(|e| e.map_data(f)).collect(),
+            },
+            Indexing {
+                target,
+                index,
+            } => Indexing {
+                target,
+                index: Box::new(index.map_data(f)),
+            },
+            Calling {
+                name,
+                parameters,
+            } => Calling {
+                name,
+                parameters: parameters.into_iter().map(|e| e.map_data(f)).collect(),
+            },
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct Union<T> {
     pub value: Box<Expr<T>>,
@@ -95,7 +196,19 @@ pub struct Union<T> {
     pub size: usize,
 }
 
-#[derive(PartialEq, Eq, Hash, Clone, Copy)]
+impl<T> Union<T> {
+    fn map_data<I, F>(self, f: &mut F) -> Union<I>
+        where F: FnMut(T) -> I
+    {
+        Union {
+            value: Box::new(self.value.map_data(f)),
+            position: self.position,
+            size: self.position,
+        }
+    }
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
 pub struct Identifier(pub Symbol);
 
 impl fmt::Debug for Identifier {

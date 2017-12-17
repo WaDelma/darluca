@@ -1,5 +1,7 @@
 use ena::unify::{UnifyKey, UnifyValue, InPlaceUnificationTable};
 
+use itertools::{Itertools, process_results};
+
 use std::iter::{repeat, once};
 use std::fmt;
 
@@ -11,23 +13,32 @@ use parser::ast::If::*;
 use interner::{Symbol, Interner};
 use interpreter::Memory;
 
+use self::TypecheckerError::*;
+
+type Result<T> = ::std::result::Result<T, TypecheckerError>;
+
 // TODO: Better type errors...
-#[derive(Debug, Clone, PartialEq)]
-pub struct TypecheckerError;
+#[derive(Debug, Fail, PartialEq, Clone)]
+pub enum TypecheckerError {
+    #[fail(display = "Unknown error")]
+    UnknownError,
+    #[fail(display = "ICE: Resolving interned string with symbol `{}` failed", _0)]
+    ResolvingSymbolFailed(String),
+}
 
 pub struct TypedAst {
     pub expressions: Vec<Expr<TypeKey>>,
     pub ctx: Typechecker,
 }
 
-pub fn typecheck(ast: Ast, interner: &mut Interner) -> Result<TypedAst, TypecheckerError> {
+pub fn typecheck(ast: Ast, interner: &mut Interner) -> Result<TypedAst> {
     let mut ctx = Typechecker::new();
     let mut mem = Memory::new();
     mem.scope(move |mut mem| {
         let expressions = ast.expressions
             .into_iter()
             .map(|e| typecheck_expr(e, &mut ctx, interner, &mut mem))
-            .collect::<Result<_, _>>()?;
+            .collect::<Result<_>>()?;
         Ok(TypedAst {
             expressions,
             ctx
@@ -35,7 +46,7 @@ pub fn typecheck(ast: Ast, interner: &mut Interner) -> Result<TypedAst, Typechec
     })
 }
 
-fn typecheck_expr(expr: Expr<()>, checker: &mut Typechecker, interner: &mut Interner, memory: &mut Memory<TypeKey>) -> Result<Expr<TypeKey>, TypecheckerError> {
+fn typecheck_expr(expr: Expr<()>, checker: &mut Typechecker, interner: &mut Interner, memory: &mut Memory<TypeKey>) -> Result<Expr<TypeKey>> {
     Ok(match expr.expression {
         Literal(Integer(i)) => Expr {
             expression: Literal(Integer(i)),
@@ -47,10 +58,10 @@ fn typecheck_expr(expr: Expr<()>, checker: &mut Typechecker, interner: &mut Inte
         },
         Identifier(i) =>  Expr {
             expression: Identifier(i),
-            data: memory.get(&i).cloned().ok_or(TypecheckerError)?,
+            data: memory.get(&i).cloned().ok_or(UnknownError)?,
         },
         Operation(Assignment { identifier, value}) => {
-            let ty = memory.get(&identifier).cloned().ok_or(TypecheckerError)?;
+            let ty = memory.get(&identifier).cloned().ok_or(UnknownError)?;
             let value = typecheck_expr(*value, checker, interner, memory)?;
             checker.unify(ty, value.data)?;
             Expr {
@@ -64,7 +75,7 @@ fn typecheck_expr(expr: Expr<()>, checker: &mut Typechecker, interner: &mut Inte
         Operation(Addition { parameters }) => {
             // TODO: More generic addition
             let ty = checker.new_type(Type::Named(interner.intern("I32")));
-            let parameters = parameters.into_iter().map(|p| typecheck_expr(p, checker, interner, memory)).collect::<Result<Vec<_>, _>>()?;
+            let parameters = parameters.into_iter().map(|p| typecheck_expr(p, checker, interner, memory)).collect::<Result<Vec<_>>>()?;
             for p in &parameters {
                 checker.unify(ty, p.data)?;
             }
@@ -79,7 +90,7 @@ fn typecheck_expr(expr: Expr<()>, checker: &mut Typechecker, interner: &mut Inte
             name,
             parameters
         }) => {
-            let fun_ty = memory.get(&name).cloned().ok_or(TypecheckerError)?;
+            let fun_ty = memory.get(&name).cloned().ok_or(UnknownError)?;
             match checker.ty(fun_ty) {
                 Type::Function(ref parameter_ty, ref return_ty, ref closed) => {
                     let (parameters, parameter_ty) = match &**parameter_ty {
@@ -91,12 +102,12 @@ fn typecheck_expr(expr: Expr<()>, checker: &mut Typechecker, interner: &mut Inte
                                     let t = checker.new_type(t.clone());
                                     checker.unify(t, p.data)?;
                                     Ok(p)
-                                }).collect::<Result<Vec<_>, _>>()?;
+                                }).collect::<Result<Vec<_>>>()?;
                             (parameters, checker.new_type(Type::Tuple(ps.clone())))
                         }
                         ty @ &Type::Named(_) => {
                             if parameters.len() != 1 {
-                                Err(TypecheckerError)?
+                                Err(UnknownError)?
                             }
                             let ty = checker.new_type(ty.clone());
                             let param = typecheck_expr(parameters[0].clone(), checker, interner, memory)?;
@@ -105,7 +116,7 @@ fn typecheck_expr(expr: Expr<()>, checker: &mut Typechecker, interner: &mut Inte
                         },
                         &Type::Unknown => {
                             if parameters.len() != 1 {
-                                Err(TypecheckerError)?
+                                Err(UnknownError)?
                             }
                             // TODO: Unknown parameter can be tuple
                             let ty = checker.new_unknown();
@@ -113,7 +124,7 @@ fn typecheck_expr(expr: Expr<()>, checker: &mut Typechecker, interner: &mut Inte
                             checker.unify(ty, param.data)?;
                             (vec![param], ty)
                         },
-                        _ => Err(TypecheckerError)?,
+                        _ => Err(UnknownError)?,
                     };
                     Expr {
                         expression: Operation(Calling {
@@ -123,7 +134,7 @@ fn typecheck_expr(expr: Expr<()>, checker: &mut Typechecker, interner: &mut Inte
                         data: checker.new_type((&**return_ty).clone()),
                     } 
                 },
-                _ => Err(TypecheckerError)?,
+                _ => Err(UnknownError)?,
             }
         },
         Function {
@@ -144,7 +155,7 @@ fn typecheck_expr(expr: Expr<()>, checker: &mut Typechecker, interner: &mut Inte
                 ty @ Type::Named(_) => {
                     let ty = checker.new_type(ty);
                     if params.len() != 1 {
-                        Err(TypecheckerError)?
+                        Err(UnknownError)?
                     }
                     memory.create(params[0], ty);
                     ty
@@ -153,18 +164,18 @@ fn typecheck_expr(expr: Expr<()>, checker: &mut Typechecker, interner: &mut Inte
                     // TODO: Unkown parameter can be tuple
                     let ty = checker.new_unknown();
                     if params.len() != 1 {
-                        Err(TypecheckerError)?
+                        Err(UnknownError)?
                     }
                     memory.create(params[0], ty);
                     ty   
                 },
-                _ => Err(TypecheckerError)?,
+                _ => Err(UnknownError)?,
             };
 
             let return_ty = checker.new_type(return_ty);
             let expressions = expressions.into_iter()
                 .map(|e| typecheck_expr(e, checker, interner, memory))
-                .collect::<Result<Vec<_>, _>>()?;
+                .collect::<Result<Vec<_>>>()?;
             let last = expressions.last().map(|v| v.data);
             let last_ty = last.unwrap_or_else(|| checker.new_type(Type::Tuple(vec![])));
             checker.unify(return_ty, last_ty)?;
@@ -202,7 +213,7 @@ fn typecheck_expr(expr: Expr<()>, checker: &mut Typechecker, interner: &mut Inte
             }
         },
         Tuple { value } => {
-            let value = value.into_iter().map(|v| typecheck_expr(v, checker, interner, memory)).collect::<Result<Vec<_>, _>>()?;
+            let value = value.into_iter().map(|v| typecheck_expr(v, checker, interner, memory)).collect::<Result<Vec<_>>>()?;
             let v = value.iter()
                 .map(|v| checker.ty(v.data))
                 .collect();
@@ -239,7 +250,7 @@ fn typecheck_expr(expr: Expr<()>, checker: &mut Typechecker, interner: &mut Inte
         },
         Scope { expressions } => {
             let ty = checker.new_unknown();
-            let expressions = expressions.into_iter().map(|e| typecheck_expr(e, checker, interner, memory)).collect::<Result<Vec<_>, _>>()?;
+            let expressions = expressions.into_iter().map(|e| typecheck_expr(e, checker, interner, memory)).collect::<Result<Vec<_>>>()?;
             let last = expressions.last().map(|v| v.data);
             let last_ty = last.unwrap_or_else(|| checker.new_type(Type::Tuple(vec![])));
             checker.unify(ty, last_ty)?;
@@ -262,7 +273,7 @@ fn typecheck_expr(expr: Expr<()>, checker: &mut Typechecker, interner: &mut Inte
     })
 }
 
-fn typecheck_if(branch: ast::If<()>, ty: TypeKey, checker: &mut Typechecker, interner: &mut Interner, memory: &mut Memory<TypeKey>) -> Result<ast::If<TypeKey>, TypecheckerError> {
+fn typecheck_if(branch: ast::If<()>, ty: TypeKey, checker: &mut Typechecker, interner: &mut Interner, memory: &mut Memory<TypeKey>) -> Result<ast::If<TypeKey>> {
     Ok(match branch {
         Condition {
             condition,
@@ -272,7 +283,7 @@ fn typecheck_if(branch: ast::If<()>, ty: TypeKey, checker: &mut Typechecker, int
             let c_ty = checker.new_type(Type::Named(interner.intern("Bool")));
             let condition = typecheck_expr(*condition, checker, interner, memory)?;
             checker.unify(c_ty, condition.data)?;
-            let expressions = expressions.into_iter().map(|e| typecheck_expr(e, checker, interner, memory)).collect::<Result<Vec<_>, _>>()?;
+            let expressions = expressions.into_iter().map(|e| typecheck_expr(e, checker, interner, memory)).collect::<Result<Vec<_>>>()?;
             let last = expressions.last().map(|v| v.data);
             let last_ty = last.unwrap_or_else(|| checker.new_type(Type::Tuple(vec![])));
             checker.unify(ty, last_ty)?;
@@ -284,7 +295,7 @@ fn typecheck_if(branch: ast::If<()>, ty: TypeKey, checker: &mut Typechecker, int
             }
         },
         Else(expressions) => {
-            let expressions = expressions.into_iter().map(|e| typecheck_expr(e, checker, interner, memory)).collect::<Result<Vec<_>, _>>()?;
+            let expressions = expressions.into_iter().map(|e| typecheck_expr(e, checker, interner, memory)).collect::<Result<Vec<_>>>()?;
             let last = expressions.last().map(|v| v.data);
             let last_ty = last.unwrap_or_else(|| checker.new_type(Type::Tuple(vec![])));
             checker.unify(ty, last_ty)?;
@@ -300,6 +311,48 @@ pub enum Type {
     Tuple(Vec<Type>),
     Union(Vec<Type>),
     Function(Box<Type>, Box<Type>, Option<Symbol>),
+}
+
+impl Type {
+    pub fn display(&self, interner: &Interner) -> Result<String> {
+        use self::Type::*;
+        let mut f = String::new();
+        match *self {
+            Unknown => f.push_str("?"),
+            Tuple(ref v) => {
+                f.push_str("[");
+                f.push_str(&process_results(
+                    v.iter().map(|v| v.display(interner)),
+                    |mut v| v.join(", "),
+                )?);
+                f.push_str(",]");
+            }
+            Union(ref v) => {
+                f.push_str("[");
+                f.push_str(&process_results(
+                    v.iter().map(|v| v.display(interner)),
+                    |mut v| v.join("|"),
+                )?);
+                f.push_str("|]");
+            }
+            Named(ref i) => f.push_str(&format!("{}", interner.resolve(*i).ok_or_else(|| ResolvingSymbolFailed(format!("{:?}", i)))?)),
+            Function(ref param, ref ret, ref uniq) => if let Some(ref uniq) = *uniq {
+                f.push_str(&format!(
+                    "{} -> {}/{}",
+                    param.display(interner)?,
+                    ret.display(interner)?,
+                    interner.resolve(*uniq).ok_or_else(|| ResolvingSymbolFailed(format!("{:?}", uniq)))?
+                ))
+            } else {
+                f.push_str(&format!(
+                    "{} -> {}",
+                    param.display(interner)?,
+                    ret.display(interner)?
+                ))
+            },
+        }
+        Ok(f)
+    }
 }
 
 impl fmt::Debug for Type {
@@ -327,26 +380,26 @@ impl fmt::Debug for Type {
 
 impl UnifyValue for Type {
     type Error = TypecheckerError;
-    fn unify_values(v1: &Self, v2: &Self) -> Result<Self, Self::Error> {
+    fn unify_values(v1: &Self, v2: &Self) -> Result<Self> {
         use self::Type::*;
         Ok(match (v1, v2) {
             (&Named(ref a), &Named(ref b)) if a == b => Named(*a),
             (&Tuple(ref az), &Tuple(ref bz)) if az.len() == bz.len() => {
                 Tuple(az.iter().zip(bz.iter())
                     .map(|(a, b)| Self::unify_values(a, b))
-                    .collect::<Result<_, _>>()?)
+                    .collect::<Result<_>>()?)
             },
             (&Union(ref az), &Union(ref bz)) if az.len() == bz.len() => {
                 Union(az.iter().zip(bz.iter())
                     .map(|(a, b)| Self::unify_values(a, b))
-                    .collect::<Result<_, _>>()?)
+                    .collect::<Result<_>>()?)
             },
             (&Function(ref ap, ref ar, None), &Function(ref bp, ref br, None)) => {
                 Function(Box::new(Self::unify_values(ap, bp)?), Box::new(Self::unify_values(ar, br)?), None)
             },
             (&Unknown, t) => t.clone(),
             (t, &Unknown) => t.clone(),
-            _ => Err(TypecheckerError)?,
+            _ => Err(UnknownError)?,
         })
     }
 }
@@ -394,11 +447,11 @@ impl Typechecker {
         self.checker.new_key(Type::Unknown)
     }
 
-    pub fn unify(&mut self, a: TypeKey, b: TypeKey) -> Result<(), TypecheckerError> {
+    pub fn unify(&mut self, a: TypeKey, b: TypeKey) -> Result<()> {
         self.checker.unify_var_var(a, b)
     }
 
-    fn ty(&mut self, key: TypeKey) -> Type {
+    pub fn ty(&mut self, key: TypeKey) -> Type {
         self.checker.probe_value(key)
     }
 }
@@ -447,5 +500,5 @@ fn cannot_unify_different_tuples() {
     let boolean = interner.intern("Bool");
     let tuple1 = checker.new_type(Tuple(vec![Named(int), Named(boolean)]));
     let tuple2 = checker.new_type(Tuple(vec![Named(boolean), Named(boolean)]));
-    assert_eq!(Err(TypecheckerError), checker.unify(tuple1, tuple2));
+    assert_eq!(Err(UnknownError), checker.unify(tuple1, tuple2));
 }

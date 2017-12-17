@@ -34,7 +34,7 @@ impl Interner {
     }
 }
 
-#[derive(Hash, Clone, Copy, PartialEq, Eq)]
+#[derive(Hash, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Symbol(usize);
 
 impl Symbol {

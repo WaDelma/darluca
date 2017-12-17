@@ -8,15 +8,14 @@ use parser::ast::Literal::*;
 use parser::ast::Operation::*;
 use parser::ast::If::*;
 use interner::Interner;
-use typechecker::{TypedAst, TypeKey, Type};
+use typechecker::{Typechecker, TypedAst, TypeKey, Type, TypecheckerError};
 
 use self::InterpreterError::*;
-use self::repr::{bool_typed, int_typed, invalid, terminal, tuple_typed, union_typed, Ty,
-                 Value};
+use self::repr::{bool_typed, int_typed, invalid, terminal, tuple_typed, union_typed, Value};
 use self::repr::Value::*;
 
-pub use self::repr::TypedValue;
 pub use self::repr::mem::Memory;
+pub use self::repr::TypedValue;
 
 #[cfg(test)]
 mod test;
@@ -49,6 +48,14 @@ pub enum InterpreterError {
     },
     #[fail(display = "ICE: Resolving interned string with symbol `{}` failed", _0)]
     ResolvingSymbolFailed(String),
+    #[fail(display = "Typecheck error {}", _0)]
+    TypecheckerError(#[cause] TypecheckerError),
+}
+
+impl From<TypecheckerError> for InterpreterError {
+    fn from(err: TypecheckerError) -> Self {
+        InterpreterError::TypecheckerError(err)
+    }
 }
 
 fn unknown<A: Into<String>, B: Into<String>, C: Into<String>>(target: A, action: B, name: C) -> InterpreterError {
@@ -67,31 +74,33 @@ fn unoperable<A: Into<String>, B: Into<String>, C: Into<String>>(value: A, ty: B
     }
 }
 
-pub fn interpret(ast: &TypedAst, interner: &mut Interner) -> Result<TypedValue> {
-    interpret_scope(&ast.expressions, &mut Memory::new(), interner)
+pub fn interpret(ast: &mut TypedAst, interner: &mut Interner) -> Result<TypedValue<TypeKey>> {
+    interpret_scope(&ast.expressions, &mut Memory::new(), interner, &mut ast.ctx)
 }
 
 pub fn interpret_noscope(
     expressions: &[Expr<TypeKey>],
-    memory: &mut Memory<TypedValue>,
+    memory: &mut Memory<TypedValue<TypeKey>>,
     interner: &mut Interner,
-) -> Result<TypedValue> {
+    checker: &mut Typechecker,
+) -> Result<TypedValue<TypeKey>> {
     let mut value = terminal();
     for e in expressions {
-        value = execute(e, memory, interner)?;
+        value = execute(e, memory, interner, checker)?;
     }
     Ok(value)
 }
 
 fn interpret_scope(
     expressions: &[Expr<TypeKey>],
-    memory: &mut Memory<TypedValue>,
+    memory: &mut Memory<TypedValue<TypeKey>>,
     interner: &mut Interner,
-) -> Result<TypedValue> {
+    checker: &mut Typechecker,
+) -> Result<TypedValue<TypeKey>> {
     memory.scope(|memory| {
         let mut value = terminal();
         for e in expressions {
-            value = execute(e, memory, interner)?;
+            value = execute(e, memory, interner, checker)?;
         }
         Ok(value)
     })
@@ -99,11 +108,12 @@ fn interpret_scope(
 
 fn execute(
     e: &Expr<TypeKey>,
-    memory: &mut Memory<TypedValue>,
+    memory: &mut Memory<TypedValue<TypeKey>>,
     interner: &mut Interner,
-) -> Result<TypedValue> {
+    checker: &mut Typechecker,
+) -> Result<TypedValue<TypeKey>> {
     Ok(match e.expression {
-        Scope { ref expressions } => interpret_scope(expressions, memory, interner)?,
+        Scope { ref expressions } => interpret_scope(expressions, memory, interner, checker)?,
         Function {
             ref params,
             ref expressions,
@@ -117,7 +127,7 @@ fn execute(
             find_free_variables(&mut free, &mut closed, expressions);
             let closed_over = free.iter()
                 .map(|f| {
-                    let c = move_or_copy(f, memory, interner).map_err(|mut e| {
+                    let c = move_or_copy(f, memory, interner, checker).map_err(|mut e| {
                         if let Unknown { ref mut target, ref mut action, ..} = e {
                             *target = "variable".into();
                             *action = "capture".into();
@@ -132,15 +142,7 @@ fn execute(
             // TODO: Closure vs function
             TypedValue::new(
                 fun,
-                Ty::Function(
-                    Box::new(Ty::from(parameter_ty)),
-                    Box::new(Ty::from(return_ty)),
-                    if is_function {
-                        None
-                    } else {
-                        Some(interner.generate("fun"))
-                    }
-                ),
+                checker.ty(e.data),
                 interner,
             )
         })?,
@@ -150,10 +152,10 @@ fn execute(
             ref ty,
         } => {
             // TODO: Shadowing
-            let place = TypedValue::new(Invalid, Ty::from(ty), interner)?;
+            let place = TypedValue::new(Invalid, checker.ty(e.data), interner)?;
             let val = value
                 .as_ref()
-                .map(|v| execute(&*v, memory, interner))
+                .map(|v| execute(&*v, memory, interner, checker))
                 .unwrap_or_else(|| Ok(invalid()))?;
             memory.create(*identifier, place.assign(val, interner)?);
             terminal()
@@ -168,13 +170,13 @@ fn execute(
             }
             Boolean(ref b) => bool_typed(*b, interner),
         },
-        Identifier(ref i) => move_or_copy(i, memory, interner)?,
+        Identifier(ref i) => move_or_copy(i, memory, interner, checker)?,
         Tuple { ref value } => tuple_typed(value
             .iter()
-            .map(|e| execute(e, memory, interner))
+            .map(|e| execute(e, memory, interner, checker))
             .collect::<Result<_>>()?),
         Union(ref u) => if let Some(ref u) = *u {
-            let value = execute(&*u.value, memory, interner)?;
+            let value = execute(&*u.value, memory, interner, checker)?;
             union_typed(u.position, value, u.size)
         } else {
             Err(InitialConstruction)?
@@ -184,7 +186,7 @@ fn execute(
                 ref condition,
                 ref expressions,
                 ref otherwise,
-            } => execute_if(condition, expressions, otherwise, memory, interner)?,
+            } => execute_if(condition, expressions, otherwise, memory, interner, checker)?,
             _ => panic!("else without if."),
         },
         Operation(ref o) => match *o {
@@ -192,7 +194,7 @@ fn execute(
                 ref identifier,
                 ref value,
             } => {
-                let value = execute(value, memory, interner)?;
+                let value = execute(value, memory, interner, checker)?;
                 let n = NonExistentAssign(
                     interner.resolve(identifier.0).ok_or_else(|| ResolvingSymbolFailed(format!("{:?}", identifier.0)))?.into(),
                     value.value().display(interner)?,
@@ -205,7 +207,7 @@ fn execute(
             Addition { ref parameters } => int_typed({
                     let parameters = parameters
                         .iter()
-                        .map(|e| execute(e, memory, interner))
+                        .map(|e| execute(e, memory, interner, checker))
                         .collect::<Result<Vec<_>>>()?;
                     let (first, rest) = parameters.split_at(1);
                     if let Int(ref p) = *first[0].value() {
@@ -228,11 +230,13 @@ fn execute(
                 ref target,
                 ref index,
             } => {
-                let index = execute(index, memory, interner)?;
-                let container = memory.get_mut(target).ok_or(unknown("variable", "index", interner.resolve(target.0).ok_or_else(|| ResolvingSymbolFailed(format!("{:?}", target.0)))?))?;
+                let index = execute(index, memory, interner, checker)?;
+                let container = memory.get_mut(target)
+                    .ok_or(unknown("variable", "index", interner.resolve(target.0)
+                    .ok_or_else(|| ResolvingSymbolFailed(format!("{:?}", target.0)))?))?;
                 // TODO: This is ugly. Refactor pls.
                 match container.split_mut_and_ref() {
-                    (&mut Tup(ref mut value), &Ty::Tuple(ref ty)) => {
+                    (&mut Tup(ref mut value), &Type::Tuple(ref ty)) => {
                         let index = match index.into_value() {
                             Int(n) => n,
                             _ => panic!("Cannot index with non-integer."),
@@ -249,30 +253,30 @@ fn execute(
                 ref name,
                 ref parameters,
             } => {
-                let fun = move_or_copy(name, memory, interner).map_err(|mut e| {
+                let fun = move_or_copy(name, memory, interner, checker).map_err(|mut e| {
                     if let Unknown { ref mut target, ref mut action, .. } = e {
                         *target = "function".into();
                         *action = "call".into();
                     }
                     e
                 })?;
-                match (fun.value(), fun.ty()) {
-                    (&Fun(ref params, ref exprs, ref closed), &Ty::Function(ref param_ty, ref return_ty, _)) => {
+                match *fun.value() {
+                    Fun(ref params, ref exprs, ref closed) => {
                         let mut memory = params
                             .iter()
                             .cloned()
                             .zip(
                                 parameters
                                     .iter()
-                                    .map(|e| execute(e, memory, interner))
+                                    .map(|e| execute(e, memory, interner, checker))
                                     .collect::<Result<Vec<_>>>()?
                                     .into_iter(),
                             )
                             .chain(closed.iter().cloned())
                             .collect();
-                        interpret_scope(&exprs[..], &mut memory, interner)?
+                        interpret_scope(&exprs[..], &mut memory, interner, checker)?
                     }
-                    (v, t) => Err(unoperable(v.display(&interner)?, t.display(&interner)?, "called"))?,
+                    ref v => Err(unoperable(v.display(&interner)?, checker.ty(e.data).display(&interner)?, "called"))?,
                 }
             }
         },
@@ -283,41 +287,44 @@ fn execute_if(
     condition: &Expr<TypeKey>,
     expressions: &[Expr<TypeKey>],
     otherwise: &ast::If<TypeKey>,
-    memory: &mut Memory<TypedValue>,
+    memory: &mut Memory<TypedValue<TypeKey>>,
     interner: &mut Interner,
-) -> Result<TypedValue> {
-    let condition = execute(condition, memory, interner)?;
+    checker: &mut Typechecker,
+) -> Result<TypedValue<TypeKey>> {
+    let condition = execute(condition, memory, interner, checker)?;
     let condition = match condition.into_value() {
         Bool(b) => b,
         _ => panic!("Invalid condition."),
     };
     if condition {
-        interpret_scope(expressions, memory, interner)
+        interpret_scope(expressions, memory, interner, checker)
     } else {
         match *otherwise {
             Condition {
                 ref condition,
                 ref expressions,
                 ref otherwise,
-            } => execute_if(condition, expressions, otherwise, memory, interner),
-            Else(ref otherwise) => interpret_scope(otherwise, memory, interner),
+            } => execute_if(condition, expressions, otherwise, memory, interner, checker),
+            Else(ref otherwise) => interpret_scope(otherwise, memory, interner, checker),
         }
     }
 }
 
-fn move_or_copy(identifier: &ast::Identifier, memory: &mut Memory<TypedValue>, interner: &Interner) -> Result<TypedValue> {
+fn move_or_copy(identifier: &ast::Identifier, memory: &mut Memory<TypedValue<TypeKey>>, interner: &Interner, checker: &mut Typechecker) -> Result<TypedValue<TypeKey>> {
     {
         let var = memory.get(identifier)
-            .ok_or(unknown("variable", "access", interner.resolve(identifier.0).ok_or_else(|| ResolvingSymbolFailed(format!("{:?}", identifier.0)))?))?;
+            .ok_or(unknown("variable", "access", interner.resolve(identifier.0)
+                .ok_or_else(|| ResolvingSymbolFailed(format!("{:?}", identifier.0)))?))?;
         if match *var.ty() {
-            Ty::Function(_, _, ref uniq) => uniq.is_none(),
+            Type::Function(_, _, ref uniq) => uniq.is_none(),
             _ => false,
         } {
             return Ok(var.clone());
         }
     }
     memory.replace(identifier, invalid(), interner)
-        .ok_or(unknown("variable", "access", interner.resolve(identifier.0).ok_or_else(|| ResolvingSymbolFailed(format!("{:?}", identifier.0)))?))?
+        .ok_or(unknown("variable", "access", interner.resolve(identifier.0)
+            .ok_or_else(|| ResolvingSymbolFailed(format!("{:?}", identifier.0)))?))?
 }
 
 fn add_not_closed(

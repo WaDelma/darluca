@@ -24,7 +24,7 @@ use darluca_lib::lexer::Lexer;
 use darluca_lib::parser::ast::Identifier;
 use darluca_lib::interpreter::interpret_noscope;
 use darluca_lib::interpreter::{Memory, TypedValue};
-use darluca_lib::typechecker::typecheck;
+use darluca_lib::typechecker::{typecheck, TypeKey};
 
 use std::io::{Write, stdout, stdin};
 use std::iter::repeat;
@@ -134,7 +134,7 @@ fn print_help<W: Write>(s: &mut W, args: &ArgMatches) -> Result<()> {
 }
 
 // TODO: Instead this ugly thing there should be API for doing requests where one of them is adding code to the session.
-fn interpret_line<W: Write>(line: &str, out: &mut W, memory: &mut Memory<TypedValue>, interner: &mut Interner) -> Result<bool> {
+fn interpret_line<W: Write>(line: &str, out: &mut W, memory: &mut Memory<TypedValue<TypeKey>>, interner: &mut Interner) -> Result<bool> {
     use nom::IResult::*;
     let tokens = match Lexer::new(interner).tokenize(line.as_ref()).1 {
         Done(left, tokens) => if left.is_empty() {
@@ -176,7 +176,7 @@ fn interpret_line<W: Write>(line: &str, out: &mut W, memory: &mut Memory<TypedVa
             return Ok(false);
         },
     };
-    let ast = match typecheck(ast, interner) {
+    let mut ast = match typecheck(ast, interner) {
         Ok(ast) => ast,
         Err(e) => {
             out.cwriteln(error_style(), "Type checking failed:")?;
@@ -184,7 +184,7 @@ fn interpret_line<W: Write>(line: &str, out: &mut W, memory: &mut Memory<TypedVa
             return Ok(false);
         }
     };
-    match interpret_noscope(&ast.expressions, memory, interner) {
+    match interpret_noscope(&ast.expressions, memory, interner, &mut ast.ctx) {
         Ok(value) => {
             match value.value().display(interner) {
                 Ok(val) => {
@@ -211,7 +211,7 @@ fn run(args: ArgMatches) -> Result<()> {
     let mut out = stdout().into_raw_mode()?;
 
     let mut history = History::new();
-    let mut memory = Memory::<TypedValue>::new();
+    let mut memory = Memory::<TypedValue<TypeKey>>::new();
     memory.start_scope();
     let mut interner = Interner::new();
     out.cwrite(logo_theme(), &format!("{}", fancy_plain(&args, "🍄", "~")))?;

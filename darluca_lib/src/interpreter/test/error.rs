@@ -19,8 +19,8 @@ macro_rules! assert_error {
                 ).1.unwrap().1
             };
             let ast = ::parser::parse(tokens.borrow()).unwrap().1;
-            let ast = ::typechecker::typecheck(ast, &mut $interner).unwrap();
-            let error = ::interpreter::interpret(&ast, &mut $interner).err().unwrap();
+            let mut ast = ::typechecker::typecheck(ast, &mut $interner).unwrap();
+            let error = ::interpreter::interpret(&mut ast, &mut $interner).err().unwrap();
             let expected = $val;
             if error != expected {
                 panic!(

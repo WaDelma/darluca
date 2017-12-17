@@ -1,10 +1,11 @@
 use interner::Interner;
 use parser::ast::{Expression, Expr, Identifier, Operation, Literal};
 use typechecker::Typechecker;
+use typechecker::Type::*;
 
 use super::Value::*;
-use super::Ty::*;
-use super::TypedValue as TyVal;
+
+type TyVal = super::repr::TypedValue<()>;
 
 mod error;
 
@@ -17,7 +18,7 @@ macro_rules! assert_parse {
         {
             #![allow(unused)]
             use interpreter::Memory;
-            use std::collections::HashMap;
+            use std::collections::BTreeMap;
 
             let tokens = {
                 ::lexer::Lexer::new(&mut $interner).tokenize(
@@ -25,21 +26,22 @@ macro_rules! assert_parse {
                 ).1.unwrap().1
             };
             let ast = ::parser::parse(tokens.borrow()).unwrap().1;
-            let ast = ::typechecker::typecheck(ast, &mut $interner).unwrap();
+            let mut ast = ::typechecker::typecheck(ast, &mut $interner).unwrap();
             let mut memory = Memory::new();
-            match ::interpreter::interpret_scope(&ast.expressions, &mut memory, &mut $interner) {
+            match ::interpreter::interpret_scope(&ast.expressions, &mut memory, &mut $interner, &mut ast.ctx) {
                 Err(e) => panic!("Interpreting failed: {}", e),
                 _ => {},
             }
             let mut n = 1;
             $(
-                let mut expected = HashMap::new();
+                let mut expected = BTreeMap::new();
                 $(
                     let interned = $interner.intern(stringify!($var));
                     expected.insert(Identifier(interned), $val);
                 )*
-                let scope = &memory.used_scopes[memory.used_scopes.len() - n];
-                if scope != &expected {
+                let scope = memory.used_scopes[memory.used_scopes.len() - n].clone();
+                let scope: BTreeMap<_, _> = scope.into_iter().map(|(i, e)| (i, e.cleanse())).collect();
+                if scope != expected {
                     panic!(
                         "Expected:\n{:#?}\nInterpreted:\n{:#?}",
                         expected,
@@ -364,11 +366,11 @@ fn interpret_function() {
                 vec![Expr::new(Expression::Operation(
                     Operation::Addition {
                         parameters: vec![
-                            Expr::new(Expression::Identifier(Identifier(x)), typechecker.new_type(::typechecker::Type::Named(int))),
-                            Expr::new(Expression::Literal(Literal::Integer(one)), typechecker.new_type(::typechecker::Type::Named(int)))
+                            Expr::new(Expression::Identifier(Identifier(x)), ()),
+                            Expr::new(Expression::Literal(Literal::Integer(one)), ())
                         ]
                     }
-                ), typechecker.new_type(::typechecker::Type::Named(int)))],
+                ), ())],
                 vec![]
             ),
             Function(Box::new(Named(int)), Box::new(Named(int)), None)
