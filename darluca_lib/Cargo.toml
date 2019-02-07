@@ -1,12 +1,9 @@
 [package]
-authors = ["Wadelma <delma@del.ma>"]
 name = "darluca_lib"
 version = "0.1.0"
+authors = ["Delma <delma@del.ma>"]
+edition = "2018"
 
 [dependencies]
-nom = "3.2.0"
-failure = "0.1.1"
-failure_derive = "0.1.1"
-string-interner = "0.6.3"
-itertools = "0.7.4"
-ena = "0.8.0"
+nom = "4.2"
+salsa = "0.10"
