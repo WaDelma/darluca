@@ -7,3 +7,4 @@ edition = "2018"
 [dependencies]
 nom = "4.2"
 salsa = "0.10"
+unic-ucd-ident = "0.8"
