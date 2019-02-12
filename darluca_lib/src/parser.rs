@@ -1,8 +1,8 @@
 use nom::{
-    do_parse, map, named, named_args, tag, take_while1, take_until, ws, dbg, types::CompleteStr, delimited, opt, take_while_m_n, alt, many0, separated_list,
+    do_parse, map, many1, named, named_args, tag, take_while, take_while1, take_until, ws, dbg, types::CompleteStr, delimited, opt, take_while_m_n, alt, many0, separated_list, digit
 };
 
-use ast::{Application, Ast, Expr, Function, Ident, Module, Assignment, Signature, Publicity, FunTy, Type};
+use ast::{Application, Ast, Expr, Function, Ident, Module, Assignment, Signature, Publicity, FunTy, Type, Literal, Conditional, Condition, Pattern};
 
 mod ast;
 #[cfg(test)]
@@ -22,20 +22,117 @@ named_args!(pub parse(name: Ident)<CompleteStr, Ast>,
 
 named!(expr<CompleteStr, Expr>,
     ws!(alt!(
-        dbg!(comment) => {Expr::Comment} |
-        dbg!(assignment) => {Expr::Assign} |
-        dbg!(module) => {Expr::Mod} |
-        dbg!(function) => {Expr::Fun} |
-        dbg!(application) => {Expr::App} | 
-        dbg!(signature) => {Expr::Sign} |
-        dbg!(parenthesed_expr) => {|e| Expr::Sub(Box::new(e))} |
-        dbg!(ident) => {Expr::Ident}
+        comment => {Expr::Comment} |
+        conditional => {Expr::Cond} |
+        assignment => {Expr::Assign} |
+        module => {Expr::Mod} |
+        function => {Expr::Fun} |
+        application => {Expr::App} |
+        signature => {Expr::Sign} |
+        parenthesed_expr => {|e| Expr::Sub(Box::new(e))} |
+        literal => {Expr::Lit} |
+        sum |
+        product |
+        ident => {Expr::Ident}
     ))
+);
+
+named!(conditional<CompleteStr, Conditional>,
+    do_parse!(
+        tag!("if") >>
+        value: expr >>
+        tag!("{") >>
+        condition: ws!(condition) >>
+        tag!("}") >>
+        otherwise: opt!(do_parse!(
+            ws!(tag!("else")) >>
+            tag!("{") >>
+            exprs: many0!(expr) >>
+            tag!("}") >>
+            (exprs)
+        )) >>
+        (Conditional {
+            value: Box::new(value),
+            condition,
+            otherwise
+        })
+    )
+);
+
+named!(condition<CompleteStr, Condition>,
+    alt!(
+        multi_condition |
+        single_condition
+    )
+);
+
+named!(multi_condition<CompleteStr, Condition>,
+    map!(
+        many1!(do_parse!(
+            ws!(tag!("is")) >>
+            pattern: pattern >>
+            tag!("{") >>
+            exprs: many0!(expr) >>
+            tag!("}") >>
+            ((pattern, exprs))
+        )),
+        |conds| Condition::Multi(conds)
+    )
+);
+
+named!(single_condition<CompleteStr, Condition>,
+    map!(
+        many0!(expr),
+        |exprs| Condition::Single(exprs)
+    )
+);
+
+named!(pattern<CompleteStr, Pattern>,
+    map!(
+        tag!("NOT IMPLEMENTED... THERE REALLY NEEDS TO BE A UNIMPLEMENTED COMBINATOR. WHY AM I YELLING?"),
+        |_| Pattern {}
+    )
+);
+
+named!(sum<CompleteStr, Expr>,
+    do_parse!(
+        tag!("|") >>
+        expr: expr >>
+        tag!("|") >>
+        (Expr::Sum(Box::new(expr)))
+    )
+);
+
+named!(product<CompleteStr, Expr>,
+    do_parse!(
+        tag!("[") >>
+        params: separated_list!(
+            ws!(tag!(",")),
+            expr
+        ) >>
+        opt!(ws!(tag!(","))) >>
+        tag!("]") >>
+        (Expr::Prod(params))
+    )
+);
+
+named!(literal<CompleteStr, Literal>,
+    alt!(
+        integer
+    )
+);
+
+named!(integer<CompleteStr, Literal>,
+    map!(
+        digit,
+        |s| Literal::Integer(s.to_string())
+    )
 );
 
 named!(signature<CompleteStr, Signature>,
     do_parse!(
-        is_pub: opt!(tag!("pub")) >>
+        ws!(tag!(":")) >>
+        is_pub: opt!(ws!(tag!("pub"))) >>
         ty: ty >>
         (Signature { publicity: is_pub.map(|_| Publicity::Pub).unwrap_or(Publicity::Priv), ty })
     )
@@ -68,16 +165,19 @@ named!(function_type<CompleteStr, FunTy>,
 named!(product_type<CompleteStr, Type>,
     do_parse!(
         tag!("[") >>
-
+        params: ws!(separated_list!(
+            ws!(tag!(",")),
+            ty
+        )) >>
+        opt!(ws!(tag!(","))) >>
         tag!("]") >>
-        (Type::Prod(vec![]))
+        (Type::Prod(params))
     )
 );
 
 named!(sum_type<CompleteStr, Type>,
     do_parse!(
         tag!("|") >>
-        
         tag!("|") >>
         (Type::Sum(vec![]))
     )
@@ -93,53 +193,53 @@ named!(parenthesed_expr<CompleteStr, Expr>,
 
 named!(module<CompleteStr, Module>,
     do_parse!(
-        ws!(tag!("mod")) >>
+        tag!("mod") >>
         name: ws!(ident) >>
-        ws!(tag!("{")) >>
-        exprs: ws!(many0!(expr)) >>
-        ws!(tag!("}")) >>
+        tag!("{") >>
+        exprs: many0!(expr) >>
+        tag!("}") >>
         (Module { name,  exprs })
     )
 );
 
 named!(assignment<CompleteStr, Assignment>,
     do_parse!(
-        lhs: ws!(ident) >>
+        lhs: ident >>
         ws!(tag!(":=")) >>
-        rhs: ws!(expr) >>
+        rhs: expr >>
         (Assignment { lhs, rhs: Box::new(rhs) })
     )
 );
 
 named!(function<CompleteStr, Function>,
     do_parse!(
-        ws!(tag!("(")) >>
-        params: ws!(separated_list!(
+        tag!("(") >>
+        params: separated_list!(
             ws!(tag!(",")),
-            ws!(ident)
-        )) >>
+            ident
+        ) >>
         opt!(ws!(tag!(","))) >>
-        ws!(tag!(")")) >>
+        tag!(")") >>
         ws!(tag!("{")) >>
-        exprs: ws!(many0!(expr)) >>
-        ws!(tag!("}")) >>
+        exprs: many0!(expr) >>
+        tag!("}") >>
         (Function { params, exprs })
     )
 );
 
 named!(application<CompleteStr, Application>,
     do_parse!(
-        fun: ws!(alt!(
-            ws!(parenthesed_expr) => {|e| Expr::Sub(Box::new(e))} |
-            ws!(ident) => {Expr::Ident}
-        )) >>
+        fun: alt!(
+            parenthesed_expr => {|e| Expr::Sub(Box::new(e))} |
+            ident => {Expr::Ident}
+        ) >>
         ws!(tag!("(")) >>
-        params: ws!(separated_list!(
+        params: separated_list!(
             ws!(tag!(",")),
-            ws!(expr)
-        )) >>
+            expr
+        ) >>
         opt!(ws!(tag!(","))) >>
-        ws!(tag!(")")) >>
+        tag!(")") >>
         (Application { fun: Box::new(fun),  params })
     )
 );
@@ -155,7 +255,7 @@ named!(comment<CompleteStr, String>,
 named!(type_ident<CompleteStr, Ident>,
     do_parse!(
         fst: take_while_m_n!(1, 1, |c| unic_ucd_ident::is_xid_start(c) && char::is_uppercase(c)) >>
-        rest: take_while1!(|c| unic_ucd_ident::is_xid_continue(c) || c == ':') >>
+        rest: take_while!(|c| unic_ucd_ident::is_xid_continue(c) || c == ':') >>
         (Ident(fst.to_string() + &*rest))
     )
 );
@@ -163,7 +263,7 @@ named!(type_ident<CompleteStr, Ident>,
 named!(ident<CompleteStr, Ident>,
     do_parse!(
         fst: take_while_m_n!(1, 1, |c| unic_ucd_ident::is_xid_start(c) && char::is_lowercase(c)) >>
-        rest: take_while1!(|c| unic_ucd_ident::is_xid_continue(c) || c == ':') >>
+        rest: take_while!(|c| unic_ucd_ident::is_xid_continue(c) || c == ':') >>
         (Ident(fst.to_string() + &*rest))
     )
 );

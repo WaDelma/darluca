@@ -8,13 +8,41 @@ pub struct Ast {
 #[derive(PartialEq)]
 pub enum Expr {
     Mod(Module),
+    Cond(Conditional),
+    Lit(Literal),
     Assign(Assignment),
     Sign(Signature),
     Fun(Function),
     App(Application),
     Ident(Ident),
+    Prod(Vec<Expr>),
+    Sum(Box<Expr>),
     Sub(Box<Expr>),
     Comment(String),
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Conditional {
+    pub value: Box<Expr>,
+    pub condition: Condition,
+    pub otherwise: Option<Vec<Expr>>,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Condition {
+    Multi(Vec<(Pattern, Vec<Expr>)>),
+    Single(Vec<Expr>)
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Pattern {
+
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Literal {
+    Integer(String),
+    Str(String),
 }
 
 #[derive(Debug, PartialEq)]
@@ -87,7 +115,11 @@ impl fmt::Debug for Expr {
         use self::Expr::*;
         if fmt.alternate() {
             match self {
+                Cond(c) => write!(fmt, "{:#?}", c),
                 Assign(a) => write!(fmt, "{:#?}", a),
+                Sum(s) => write!(fmt, "{:#?}", s),
+                Prod(p) => write!(fmt, "{:#?}", p),
+                Lit(l) => write!(fmt, "{:#?}", l),
                 Sign(s) => write!(fmt, "{:#?}", s),
                 Mod(m) => write!(fmt, "{:#?}", m),
                 Sub(e) => write!(fmt, "({:#?})", e),
@@ -98,7 +130,11 @@ impl fmt::Debug for Expr {
             }
         } else {
             match self {
+                Cond(c) => write!(fmt, "{:?}", c),
                 Assign(a) => write!(fmt, "{:?}", a),
+                Sum(s) => write!(fmt, "{:?}", s),
+                Prod(p) => write!(fmt, "{:?}", p),
+                Lit(l) => write!(fmt, "{:?}", l),
                 Sign(s) => write!(fmt, "{:?}", s),
                 Mod(m) => write!(fmt, "{:?}", m),
                 Sub(e) => write!(fmt, "({:?})", e),
@@ -114,5 +150,11 @@ impl fmt::Debug for Expr {
 impl fmt::Debug for Ident {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "`{}`", self.0)
+    }
+}
+
+impl<'a> From<&'a str> for Ident {
+    fn from(f: &'a str) -> Self {
+        Ident(f.into())
     }
 }
