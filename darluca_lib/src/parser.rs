@@ -1,7 +1,7 @@
 use nom::{
-    alt, dbg, delimited, digit, do_parse, many0, many1, map, named, named_args, opt,
-    separated_list, tag, take_until, take_while, take_while1, take_while_m_n, types::CompleteStr,
-    ws,
+    alt, dbg, delimited, digit, do_parse, eat_separator, many0, many1, map, named, named_args, opt,
+    sep, separated_list, tag, take_until, take_while, take_while1, take_while_m_n,
+    types::CompleteStr,
 };
 
 use ast::{
@@ -15,6 +15,27 @@ mod ast;
 #[cfg(test)]
 mod test;
 mod types;
+
+named!(pub space<CompleteStr, CompleteStr>, eat_separator!(" \r\n"));
+
+#[macro_export]
+macro_rules! ws (
+    ($i:expr, $($args:tt)*) => (
+        {
+            use nom::{Convert, Err};
+
+            match sep!($i, space, $($args)*) {
+                Err(e) => Err(e),
+                Ok((i1, o)) => {
+                    match space(i1) {
+                        Err(e) => Err(Err::convert(e)),
+                        Ok((i2, _)) => Ok((i2, o))
+                    }
+                }
+            }
+        }
+    )
+);
 
 named_args!(pub parse(name: Ident)<CompleteStr, Ast>,
     map!(

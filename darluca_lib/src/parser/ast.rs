@@ -21,6 +21,12 @@ pub enum Expr {
     Comment(String),
 }
 
+pub struct Oper {
+    lhs: Box<Expr>,
+    op: String,
+    rhs: Box<Expr>,
+}
+
 #[derive(Debug, PartialEq)]
 pub struct Conditional {
     pub value: Box<Expr>,
