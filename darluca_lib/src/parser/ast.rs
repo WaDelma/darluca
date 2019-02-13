@@ -31,13 +31,11 @@ pub struct Conditional {
 #[derive(Debug, PartialEq)]
 pub enum Condition {
     Multi(Vec<(Pattern, Vec<Expr>)>),
-    Single(Vec<Expr>)
+    Single(Vec<Expr>),
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Pattern {
-
-}
+pub struct Pattern {}
 
 #[derive(Debug, PartialEq)]
 pub enum Literal {
@@ -66,13 +64,20 @@ pub struct Function {
 #[derive(Debug, PartialEq)]
 pub struct Signature {
     pub publicity: Publicity,
+    pub mutability: Mutability,
     pub ty: Type,
 }
 
 #[derive(Debug, PartialEq)]
+pub enum Mutability {
+    Mutable,
+    Immutable,
+}
+
+#[derive(Debug, PartialEq)]
 pub enum Publicity {
-    Pub,
-    Priv,
+    Public,
+    Private,
 }
 
 #[derive(Debug, PartialEq)]
@@ -104,7 +109,7 @@ impl fmt::Debug for Ast {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         if fmt.alternate() {
             write!(fmt, "Ast {:#?}", self.modules)
-        }else {
+        } else {
             write!(fmt, "Ast {:?}", self.modules)
         }
     }

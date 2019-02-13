@@ -1,4 +1,4 @@
-use super::ast::{Ast, Ident, Expr, Module, Assignment, Literal, Function, Application};
+use super::ast::{Application, Assignment, Ast, Expr, Function, Ident, Literal, Module};
 use super::parse;
 use nom::{types::CompleteStr, Err};
 
@@ -6,13 +6,11 @@ fn ast(name: &str, exprs: Vec<Expr>) -> Result<(CompleteStr, Ast), Err<CompleteS
     Ok((
         "".into(),
         Ast {
-            modules: vec![
-                Module {
-                    name: Ident(name.into()),
-                    exprs
-                }
-            ]
-        }
+            modules: vec![Module {
+                name: Ident(name.into()),
+                exprs,
+            }],
+        },
     ))
 }
 
@@ -22,12 +20,11 @@ fn comment() {
         parse(
             r#"
             //Hello, World!
-            "#.into(),
+            "#
+            .into(),
             "main".into()
         ),
-        ast("main", vec![
-            Expr::Comment("Hello, World!".into())
-        ])
+        ast("main", vec![Expr::Comment("Hello, World!".into())])
     );
 }
 
@@ -37,15 +34,17 @@ fn assignment() {
         parse(
             r#"
             x := 10
-            "#.into(),
+            "#
+            .into(),
             "main".into()
         ),
-        ast("main", vec![
-            Expr::Assign(Assignment {
+        ast(
+            "main",
+            vec![Expr::Assign(Assignment {
                 lhs: "x".into(),
                 rhs: Box::new(Expr::Lit(Literal::Integer("10".into())))
-            })
-        ])
+            })]
+        )
     );
 }
 
@@ -58,19 +57,23 @@ fn function() {
                 x
             }
             z(k,)
-            "#.into(),
+            "#
+            .into(),
             "main".into()
         ),
-        ast("main", vec![
-            Expr::Fun(Function {
-                params: vec!["x".into(), "y".into()],
-                exprs: vec![Expr::Ident("x".into())]
-            }),
-            Expr::App(Application {
-                fun: Box::new(Expr::Ident("z".into())),
-                params: vec![Expr::Ident("k".into())],
-            })
-        ])
+        ast(
+            "main",
+            vec![
+                Expr::Fun(Function {
+                    params: vec!["x".into(), "y".into()],
+                    exprs: vec![Expr::Ident("x".into())]
+                }),
+                Expr::App(Application {
+                    fun: Box::new(Expr::Ident("z".into())),
+                    params: vec![Expr::Ident("k".into())],
+                })
+            ]
+        )
     );
 }
 
@@ -81,16 +84,17 @@ fn product() {
             r#"
             []
             [x, y]
-            "#.into(),
+            "#
+            .into(),
             "main".into()
         ),
-        ast("main", vec![
-            Expr::Prod(vec![]),
-            Expr::Prod(vec![
-                Expr::Ident("x".into()),
-                Expr::Ident("y".into())
-            ])
-        ])
+        ast(
+            "main",
+            vec![
+                Expr::Prod(vec![]),
+                Expr::Prod(vec![Expr::Ident("x".into()), Expr::Ident("y".into())])
+            ]
+        )
     );
 }
 
@@ -100,32 +104,35 @@ fn sum() {
         parse(
             r#"
             |x|
-            "#.into(),
+            "#
+            .into(),
             "main".into()
         ),
-        ast("main", vec![
-            Expr::Sum(Box::new(Expr::Ident("x".into()))),
-        ])
+        ast("main", vec![Expr::Sum(Box::new(Expr::Ident("x".into()))),])
     );
 }
-
 
 #[test]
 fn idents_starting_with_reserved_words() {
     assert_eq!(
         parse(
             r#"
-            iffy puberty elsebeths modulin isis
-            "#.into(),
+            iffy puberty elsebeths mutant modulin isis
+            "#
+            .into(),
             "main".into()
         ),
-        ast("main", vec![
-            Expr::Ident("iffy".into()),
-            Expr::Ident("puberty".into()),
-            Expr::Ident("elsebeths".into()),
-            Expr::Ident("modulin".into()),
-            Expr::Ident("isis".into()),
-        ])
+        ast(
+            "main",
+            vec![
+                Expr::Ident("iffy".into()),
+                Expr::Ident("puberty".into()),
+                Expr::Ident("elsebeths".into()),
+                Expr::Ident("mutant".into()),
+                Expr::Ident("modulin".into()),
+                Expr::Ident("isis".into()),
+            ]
+        )
     );
 }
 
@@ -147,7 +154,8 @@ fn test() {
                         }
                     }
                 }
-            "#.into(),
+            "#
+            .into(),
             Ident("main".to_owned()),
         )
     );

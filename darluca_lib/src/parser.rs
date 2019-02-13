@@ -1,12 +1,20 @@
 use nom::{
-    do_parse, map, many1, named, named_args, tag, take_while, take_while1, take_until, ws, dbg, types::CompleteStr, delimited, opt, take_while_m_n, alt, many0, separated_list, digit
+    alt, dbg, delimited, digit, do_parse, many0, many1, map, named, named_args, opt,
+    separated_list, tag, take_until, take_while, take_while1, take_while_m_n, types::CompleteStr,
+    ws,
 };
 
-use ast::{Application, Ast, Expr, Function, Ident, Module, Assignment, Signature, Publicity, FunTy, Type, Literal, Conditional, Condition, Pattern};
+use ast::{
+    Application, Assignment, Ast, Condition, Conditional, Expr, Function, Ident, Literal, Module,
+    Mutability, Pattern, Publicity, Signature,
+};
+
+use types::ty;
 
 mod ast;
 #[cfg(test)]
 mod test;
+mod types;
 
 named_args!(pub parse(name: Ident)<CompleteStr, Ast>,
     map!(
@@ -133,53 +141,13 @@ named!(signature<CompleteStr, Signature>,
     do_parse!(
         ws!(tag!(":")) >>
         is_pub: opt!(ws!(tag!("pub"))) >>
+        is_mut: opt!(ws!(tag!("mut"))) >>
         ty: ty >>
-        (Signature { publicity: is_pub.map(|_| Publicity::Pub).unwrap_or(Publicity::Priv), ty })
-    )
-);
-
-named!(ty<CompleteStr, Type>,
-    alt!(
-        function_type => {|t| Type::Fun(Box::new(t))} |
-        product_type |
-        sum_type |
-        tag!("_") => {|_| Type::Placeholder } |
-        parenthesed_type => {|t| Type::Paren(Box::new(t))} |
-        type_ident => {Type::Ty}
-    )
-);
-
-named!(parenthesed_type<CompleteStr, Type>,
-    delimited!(tag!("("), ty, tag!(")"))
-);
-
-named!(function_type<CompleteStr, FunTy>,
-    do_parse!(
-        lhs: type_ident >>
-        tag!("->") >>
-        rhs: ty >>
-        (FunTy { lhs: Type::Ty(lhs), rhs })
-    )
-);
-
-named!(product_type<CompleteStr, Type>,
-    do_parse!(
-        tag!("[") >>
-        params: ws!(separated_list!(
-            ws!(tag!(",")),
+        (Signature {
+            mutability: is_mut.map(|_| Mutability::Mutable).unwrap_or(Mutability::Immutable),
+            publicity: is_pub.map(|_| Publicity::Public).unwrap_or(Publicity::Private),
             ty
-        )) >>
-        opt!(ws!(tag!(","))) >>
-        tag!("]") >>
-        (Type::Prod(params))
-    )
-);
-
-named!(sum_type<CompleteStr, Type>,
-    do_parse!(
-        tag!("|") >>
-        tag!("|") >>
-        (Type::Sum(vec![]))
+        })
     )
 );
 
@@ -249,14 +217,6 @@ named!(comment<CompleteStr, String>,
         tag!("//") >>
         comment: take_until!("\n") >>
         (comment.to_string())
-    )
-);
-
-named!(type_ident<CompleteStr, Ident>,
-    do_parse!(
-        fst: take_while_m_n!(1, 1, |c| unic_ucd_ident::is_xid_start(c) && char::is_uppercase(c)) >>
-        rest: take_while!(|c| unic_ucd_ident::is_xid_continue(c) || c == ':') >>
-        (Ident(fst.to_string() + &*rest))
     )
 );
 
