@@ -12,7 +12,7 @@ use ast::{
 use types::ty;
 
 mod ast;
-mod oper;
+pub mod oper;
 #[cfg(test)]
 mod test;
 mod types;
