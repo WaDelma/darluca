@@ -19,7 +19,6 @@ mod types;
 
 named!(pub space<CompleteStr, CompleteStr>, eat_separator!(" \r\n"));
 
-#[macro_export]
 macro_rules! ws (
     ($i:expr, $($args:tt)*) => (
         {
