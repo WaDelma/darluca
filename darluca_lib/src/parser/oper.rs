@@ -1,12 +1,11 @@
-use nom::lib::std::collections::VecDeque;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashSet, VecDeque};
 use std::fmt;
 use std::iter::once;
 use std::rc::Rc;
 
 use nom::{
-    alt, apply, cond, do_parse, error_position, many1, map, named_args, preceded, tag, tuple,
-    types::CompleteStr, IResult, ws, dbg
+    alt, apply, cond, dbg, do_parse, error_position, exact, many1, map, named_args, preceded, tag,
+    tuple, types::CompleteStr, ws, IResult,
 };
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
@@ -32,24 +31,16 @@ pub struct Operator {
 
 impl fmt::Debug for Operator {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        use self::Associativity::*;
+        use self::Fixity::*;
         let n = self.names.join("_");
         match self.fixity {
-            Fixity::Infix(Associativity::Left) => {
-                write!(fmt, "_{}_ <-", n)
-            }
-            Fixity::Infix(Associativity::Non) => {
-                write!(fmt, "_{}_", n)
-            }
-            Fixity::Infix(Associativity::Right) => {
-                write!(fmt, "_{}_ ->", n)
-            }
-            Fixity::Postfix => {
-                write!(fmt, "_{}", n)
-            }
-            Fixity::Prefix => {
-                write!(fmt, "{}_", n)
-            }
-            Fixity::Closed => write!(fmt, "{}", n)
+            Infix(Left) => write!(fmt, "_{}_ <-", n),
+            Infix(Non) => write!(fmt, "_{}_", n),
+            Infix(Right) => write!(fmt, "_{}_ ->", n),
+            Postfix => write!(fmt, "_{}", n),
+            Prefix => write!(fmt, "{}_", n),
+            Closed => write!(fmt, "{}", n),
         }
     }
 }
@@ -62,21 +53,13 @@ pub struct Precedence {
 
 impl Precedence {
     pub fn new(ops: Vec<Operator>) -> Self {
-        let mut ops_: Vec<(Fixity, Vec<Operator>)> = vec![];
-        for o in ops {
-            if let Some((_, ops)) = ops_.iter_mut().filter(|(f, _)| f == &o.fixity).next() {
-                ops.push(o);
-            } else {
-                ops_.push((o.fixity, vec![o]));
-            }
-        }
-        Precedence { ops: ops_, succs: vec![] }
+        Self::with_successors(ops, vec![])
     }
 
     pub fn with_successors(ops: Vec<Operator>, succs: Vec<Rc<Precedence>>) -> Self {
         let mut ops_: Vec<(Fixity, Vec<Operator>)> = vec![];
         for o in ops {
-            if let Some((_, ops)) = ops_.iter_mut().filter(|(f, _)| f == &o.fixity).next() {
+            if let Some((_, ops)) = ops_.iter_mut().find(|(f, _)| f == &o.fixity) {
                 ops.push(o);
             } else {
                 ops_.push((o.fixity, vec![o]));
@@ -88,8 +71,7 @@ impl Precedence {
     fn ops(&self, fix: Fixity) -> &[Operator] {
         self.ops
             .iter()
-            .filter(|(f, _)| f == &fix)
-            .next()
+            .find(|(f, _)| f == &fix)
             .map(|(_, v)| &v[..])
             .unwrap_or(&[][..])
     }
@@ -203,8 +185,8 @@ fn oper1() {
                         ))]
                     ))]
                 ))]
-            )
-        ]))
+            )])
+        )
     );
 }
 
@@ -224,48 +206,40 @@ fn oper2() {
             fixity: Fixity::Closed,
         },
     ]));
-    let mut ifthenelse = Precedence::new(vec![
-        Operator {
-            names: vec!["if".into(), "then".into(), "else".into()],
-            fixity: Fixity::Prefix,
-        }
-    ]);
+    let mut ifthenelse = Precedence::new(vec![Operator {
+        names: vec!["if".into(), "then".into(), "else".into()],
+        fixity: Fixity::Prefix,
+    }]);
     ifthenelse.succs.push(oper.clone());
-    let mut bang = Precedence::new(vec![
-        Operator {
-            names: vec!["!".into()],
-            fixity: Fixity::Postfix,
-        }
-    ]);
+    let mut bang = Precedence::new(vec![Operator {
+        names: vec!["!".into()],
+        fixity: Fixity::Postfix,
+    }]);
     bang.succs.push(oper.clone());
     let mut arith = Precedence::new(vec![
         Operator {
             names: vec!["+".into()],
-            fixity: Fixity::Infix(Associativity::Left)
+            fixity: Fixity::Infix(Associativity::Left),
         },
         Operator {
             names: vec!["-".into()],
-            fixity: Fixity::Infix(Associativity::Left)
-        }
+            fixity: Fixity::Infix(Associativity::Left),
+        },
     ]);
     arith.succs.push(oper.clone());
-    let mut comp = Precedence::new(vec![
-        Operator {
-            names: vec!["==".into()],
-            fixity: Fixity::Infix(Associativity::Non)
-        }
-    ]);
-    comp.succs.push(oper.clone());
+    let mut comp = Precedence::new(vec![Operator {
+        names: vec!["==".into()],
+        fixity: Fixity::Infix(Associativity::Non),
+    }]);
     comp.succs.push(Rc::new(bang));
     comp.succs.push(Rc::new(arith));
-    let mut and = Precedence::new(vec![
-        Operator {
-            names: vec!["∧".into()],
-            fixity: Fixity::Infix(Associativity::Right)
-        }
-    ]);
-    and.succs.push(oper);
+    comp.succs.push(oper.clone());
+    let mut and = Precedence::new(vec![Operator {
+        names: vec!["∧".into()],
+        fixity: Fixity::Infix(Associativity::Right),
+    }]);
     and.succs.push(Rc::new(comp));
+    and.succs.push(oper);
 
     // TODO: Becuase the order precendence dag is visited it parses `n` and thus doesn't realise that there is still + coming...
     // This is not explained in the paper.. It just says that it's choice from all stronger precedences (which `n` is...)
@@ -340,24 +314,25 @@ macro_rules! for_each {
 macro_rules! trace {
     ($i:expr, $submac:ident!( $($args:tt)* ), $m:expr) => {
         {
-            println!("{}: `{}`", $m, $i);
-            $submac!($i, $($args)*)
+            println!(r#""{} `{}`": {{ "#, $m, $i);
+            let r = $submac!($i, $($args)*);
+            println!("}},");
+            r
         }
-        
     };
 }
 
 named_args!(pub parse_expr<'a>(prec: &PrecedenceGraph)<CompleteStr<'a>, Oper>,
     trace!(one_of!(
         p in Bfs::new(&prec.0),
-        apply!(parse_oper, p, prec)
+        apply!(parse_node, p, prec)
     ), "parse_expr")
 );
 
-named_args!(parse_oper<'a>(prec: &Precedence, root: &PrecedenceGraph)<CompleteStr<'a>, Oper>,
+named_args!(parse_node<'a>(prec: &Precedence, root: &PrecedenceGraph)<CompleteStr<'a>, Oper>,
     trace!(alt!(
-        apply!(parse_op, prec.ops(Fixity::Closed), root) |
-        map!(
+        trace!(apply!(parse_op, prec.ops(Fixity::Closed), root), "closed") |
+        trace!(map!(
             tuple!(
                 apply!(parse_stronger, prec, root),
                 apply!(parse_op, prec.ops(Fixity::Infix(Associativity::Non)), root),
@@ -368,11 +343,11 @@ named_args!(parse_oper<'a>(prec: &Precedence, root: &PrecedenceGraph)<CompleteSt
                 oper2.params.push(oper3);
                 oper2
             }
-        ) |
+        ), "non") |
         map!(
             tuple!(
-                many1!(trace!(apply!(parse_right, prec, root), "right")),
-                trace!(apply!(parse_stronger, prec, root), format!("no {:#?}", prec))
+                many1!(apply!(parse_right, prec, root)),
+                apply!(parse_stronger, prec, root)
             ),
             |(opers, mut oper)| {
                 for mut op in opers.into_iter().rev() {
@@ -395,14 +370,14 @@ named_args!(parse_oper<'a>(prec: &Precedence, root: &PrecedenceGraph)<CompleteSt
                 oper
             }
         )
-    ), format!("parse_oper {:#?}", prec))
+    ), format!("parse_node {:?}", prec.ops))
 );
 
 named_args!(parse_stronger<'a>(prec: &Precedence, root: &PrecedenceGraph)<CompleteStr<'a>, Oper>,
     trace!(one_of!(
         p in Bfs::new(prec.succs().iter().map(|p| &**p)),
-        apply!(parse_oper, p, root)
-    ), format!("parse_stronger"))
+        apply!(parse_node, p, root)
+    ), format!("parse_stronger {:?}", prec.succs().iter().flat_map(|s| &*s.ops).collect::<Vec<_>>()))
 );
 
 named_args!(parse_left<'a>(prec: &Precedence, root: &PrecedenceGraph)<CompleteStr<'a>, Oper>,
@@ -438,7 +413,7 @@ named_args!(parse_right<'a>(prec: &Precedence, root: &PrecedenceGraph)<CompleteS
 );
 
 named_args!(parse_op<'a>(ops: &[Operator], root: &PrecedenceGraph)<CompleteStr<'a>, Oper>,
-    trace!(one_of!(
+    one_of!(
         op in ops,
         trace!(map!(
             for_each!(
@@ -458,7 +433,7 @@ named_args!(parse_op<'a>(ops: &[Operator], root: &PrecedenceGraph)<CompleteStr<'
                 }
             }
         ), format!("parse_op({:?})", op))
-    ), "parse_op")
+    )
 );
 
 // fn parse_stronger<'a>(src: &'a str, prec: &Precedence, root: &Precedence) -> Res<'a, Oper> {
