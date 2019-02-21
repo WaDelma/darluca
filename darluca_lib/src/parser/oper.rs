@@ -231,23 +231,24 @@ fn oper2() {
         names: vec!["==".into()],
         fixity: Fixity::Infix(Associativity::Non),
     }]);
+    comp.succs.push(oper.clone());
     comp.succs.push(Rc::new(bang));
     comp.succs.push(Rc::new(arith));
-    comp.succs.push(oper.clone());
     let mut and = Precedence::new(vec![Operator {
         names: vec!["∧".into()],
         fixity: Fixity::Infix(Associativity::Right),
     }]);
-    and.succs.push(Rc::new(comp));
     and.succs.push(oper);
+    and.succs.push(Rc::new(comp));
 
-    // TODO: Becuase the order precendence dag is visited it parses `n` and thus doesn't realise that there is still + coming...
+    // TODO: Because the order precendence dag is visited it parses `n` and thus doesn't realise that there is still + coming...
     // This is not explained in the paper.. It just says that it's choice from all stronger precedences (which `n` is...)
     // Maybe topological ordering?
     panic!(
         "{:#?}",
         parse_expr(
-            "b ∧ n + n".into(),
+            "n + n".into(),
+            // "b ∧ n + n".into(),
             // "if b ∧ n + n == n ! then n else ( n + n - n )".into(),
             &PrecedenceGraph(vec![and, ifthenelse])
         )
@@ -350,6 +351,7 @@ named_args!(parse_node<'a>(prec: &Precedence, root: &PrecedenceGraph)<CompleteSt
                 apply!(parse_stronger, prec, root)
             ),
             |(opers, mut oper)| {
+                println!(r#""right": "success","#);
                 for mut op in opers.into_iter().rev() {
                     op.params.push(oper);
                     oper = op;
@@ -363,6 +365,7 @@ named_args!(parse_node<'a>(prec: &Precedence, root: &PrecedenceGraph)<CompleteSt
                 many1!(apply!(parse_left, prec, root))
             ),
             |(mut oper, opers)| {
+                println!(r#""left": "success","#);
                 for mut op in opers.into_iter() {
                     op.params.insert(0, oper);
                     oper = op;
